@@ -6,6 +6,7 @@
     <string name="header_subtitle">زامانىۋى ئېقىم ۋە ئايلىق ھېساباتلارنى باشقۇرۇش</string>
 
     <!-- Auth Screen -->
+    <string name="default_web_client_id" translatable="false">100000000000-placeholder.apps.googleusercontent.com</string>
     <string name="auth_welcome_title">خۇش كەپسىز</string>
     <string name="auth_welcome_subtitle">ھېساباتلار، ئېقىم مىقدارى ۋە 12 ئايلىق تۆلەش ھالىتىنى بۇلۇتتا بىخەتەر باشقۇرۇڭ</string>
     <string name="sign_in_with_google">Google ھېساباتى بىلەن كىرىش</string>
@@ -49,39 +50,54 @@
 
     <!-- Form & Sheet -->
     <string name="add_account_fab">يېڭى ھېسابات</string>
+    <string name="action_add_new">يېڭى ھېسابات</string>
     <string name="cd_add_account">يېڭى ھېسابات قوشۇش</string>
     <string name="form_title_new">يېڭى ھېسابات كىرگۈزۈش</string>
     <string name="form_title_edit">ھېساباتنى تەھرىرلەش</string>
     <string name="editing_badge">تەھرىرلىنىۋاتىدۇ</string>
+    <string name="form_badge_editing">تەھرىرلىنىۋاتىدۇ</string>
     <string name="field_name_label">ئىسىم *</string>
     <string name="field_name_placeholder">مەسئۇل كىشى ئىسمى</string>
+    <string name="field_name_hint">مەسئۇل كىشى ئىسمى</string>
     <string name="field_account_name_label">ھېسابات ئىسمى / نومۇرى *</string>
+    <string name="field_account_label">ھېسابات ئىسمى / نومۇرى *</string>
     <string name="field_account_name_placeholder">ھېسابات نومۇرى</string>
+    <string name="field_account_hint">ھېسابات نومۇرى</string>
     <string name="field_password_label">مەخپىي نومۇرى</string>
     <string name="field_password_placeholder">مەخپىي نومۇرى</string>
+    <string name="field_password_hint">مەخپىي نومۇرى</string>
     <string name="show_password">كۆرسىتىش</string>
     <string name="hide_password">يوشۇرۇش</string>
     <string name="cd_toggle_password">مەخپىي نومۇرنى كۆرسىتىش ياكى يوشۇرۇش</string>
     <string name="field_flow_label">ئېقىم مىقدارى</string>
     <string name="field_flow_placeholder">مەسىلەن: 100M / 1000GB</string>
+    <string name="field_flow_hint">مەسىلەن: 100M / 1000GB</string>
     <string name="field_open_date_label">ئاچقان ۋاقتى</string>
     <string name="field_open_date_placeholder">ۋاقىت تاللاڭ (YYYY-MM-DD)</string>
+    <string name="field_open_date_hint">ۋاقىت تاللاڭ (YYYY-MM-DD)</string>
     <string name="pick_date_cd">چېسلا تاللاش</string>
     <string name="cd_pick_date">چېسلا تاللاش</string>
     <string name="field_street_label">كوچا ئىسمى</string>
     <string name="field_street_placeholder">كوچا ئىسمى</string>
+    <string name="field_street_hint">كوچا ئىسمى</string>
     <string name="field_house_label">ئۆي نومۇرى</string>
     <string name="field_house_placeholder">ئۆي نومۇرى</string>
+    <string name="field_house_hint">ئۆي نومۇرى</string>
     <string name="field_notes_label">ئىزاھات</string>
     <string name="field_notes_placeholder">قوشۇمچە ئىزاھاتلار...</string>
+    <string name="field_notes_hint">قوشۇمچە ئىزاھاتلار...</string>
     <string name="months_grid_title">12 ئايلىق پۇل تۆلەش ھالىتى (پۇل بەرگەن ئايلارنى بەلگەلەڭ):</string>
+    <string name="months_grid_prompt">12 ئايلىق پۇل تۆلەش ھالىتى (پۇل بەرگەن ئايلارنى بەلگەلەڭ):</string>
     <string name="months_card_title">12 ئايلىق پۇل تۆلەش ھالىتى</string>
     <string name="month_label_format">%1$d-ئاي</string>
     <string name="select_all_months">ھەممىسى</string>
     <string name="clear_all_months">تازىلاش</string>
     <string name="save_new_account">ھېساباتنى ساقلاش</string>
+    <string name="btn_save_new">ھېساباتنى ساقلاش</string>
     <string name="save_changes">ئۆزگەرتىشنى ساقلاش</string>
+    <string name="btn_save_edit">ئۆزگەرتىشنى ساقلاش</string>
     <string name="btn_save">ساقلاش</string>
+    <string name="btn_confirm">جەزملەشتۈرۈش</string>
     <string name="cancel_action">بىكار قىلىش</string>
     <string name="btn_cancel">بىكار قىلىش</string>
     <string name="btn_close">تاقاش</string>
@@ -108,11 +124,15 @@
     <string name="copy_password_cd">مەخپىي نومۇرنى كۆچۈرۈش</string>
     <string name="cd_copy">كۆچۈرۈش</string>
     <string name="copied_to_clipboard">%1$s كۆچۈرۈلدى</string>
+    <string name="copied_toast">%1$s كۆچۈرۈلدى</string>
 
     <!-- Empty & Loading & Error States -->
     <string name="empty_accounts_title">ھېچقانداق ھېسابات ساقلانمىغان</string>
+    <string name="empty_state_title">ھېچقانداق ھېسابات ساقلانمىغان</string>
     <string name="empty_accounts_subtitle">ئاستىدىكى «+ يېڭى ھېسابات» كۇنۇپكىسىنى بېسىپ تۇنجى ھېساباتنى قوشۇڭ</string>
+    <string name="empty_state_subtitle">ئاستىدىكى «+ يېڭى ھېسابات» كۇنۇپكىسىنى بېسىپ تۇنجى ھېساباتنى قوشۇڭ</string>
     <string name="empty_search_message">مۇناسىپ ھېسابات تېپىلمىدى.</string>
+    <string name="no_matching_records">مۇناسىپ ھېسابات تېپىلمىدى.</string>
     <string name="loading_accounts">ھېساباتلار يۈكلىنىۋاتىدۇ...</string>
     <string name="retry_action">قايتا سىناش</string>
 
