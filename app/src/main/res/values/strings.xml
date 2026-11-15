@@ -142,7 +142,9 @@
 
     <!-- Export / Import Messages -->
     <string name="export_success">زاپاس ھۆججەت مۇۋەپپەقىيەتلىك ساقلاندى!</string>
+    <string name="backup_export_success">زاپاس ھۆججەت مۇۋەپپەقىيەتلىك ساقلاندى!</string>
     <string name="export_failed">زاپاس ھۆججەت ساقلاشتا خاتالىق كۆرۈلدى.</string>
+    <string name="backup_error">زاپاسلاش مەشغۇلاتىدا خاتالىق كۆرۈلدى.</string>
     <string name="import_success">%1$d دانە ھېسابات مۇۋەپپەقىيەتلىك يۈكلەندى!</string>
     <string name="backup_import_success">%1$d دانە ھېسابات مۇۋەپپەقىيەتلىك يۈكلەندى!</string>
     <string name="import_empty">يۈكلەيدىغان ئىناۋەتلىك ھېسابات تېپىلمىدى.</string>
