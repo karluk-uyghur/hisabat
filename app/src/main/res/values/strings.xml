@@ -1,0 +1,104 @@
+<resources>
+    <string name="app_name">ھېسابات</string>
+    <string name="app_title">ھېسابات باشقۇرۇش سىستېمىسى</string>
+    <string name="app_subtitle">زامانىۋى ئېقىم ۋە ئايلىق ھېساباتلارنى رېشاتكىلىق تەپتىش قىلىش</string>
+
+    <!-- Auth Screen -->
+    <string name="auth_welcome_title">خۇش كەپسىز</string>
+    <string name="auth_welcome_subtitle">ھېساباتلار، ئېقىم مىقدارى ۋە 12 ئايلىق تۆلەش ھالىتىنى بۇلۇتتا بىخەتەر باشقۇرۇڭ</string>
+    <string name="sign_in_with_google">Google ھېساباتى بىلەن كىرىش</string>
+    <string name="sign_in_loading">كىرىۋاتىدۇ...</string>
+    <string name="sign_out">چىقىش</string>
+    <string name="auth_error_missing_config">Google كىرىش سەپلىمىسى تېپىلمىدى</string>
+    <string name="auth_error_unexpected">ئىناۋەتسىز كىرىش ئۇچۇرى</string>
+    <string name="auth_error_generic">كىرىشتە خاتالىق كۆرۈلدى</string>
+
+    <!-- Stats & Header -->
+    <string name="total_accounts_label">جەمئىي ھېساباتلار:</string>
+    <string name="paid_months_summary_label">تۆلەنگەن ئايلار</string>
+    <string name="fully_paid_accounts_label">تولۇق تۆلىگەن</string>
+    <string name="toggle_theme_cd">تېما ئۆزگەرتىش</string>
+    <string name="backup_menu_cd">زاپاسلاش ۋە يۈكلەش تىزىملىكى</string>
+    <string name="export_backup">زاپاس ھۆججەت چىقىرىش (JSON)</string>
+    <string name="import_backup">زاپاس يۈكلەش (JSON)</string>
+
+    <!-- Search & Filters -->
+    <string name="search_placeholder">ئىسىم، ھېسابات، كوچا ياكى ئۆي نومۇرى ئارقىلىق تېز ئىزدەش...</string>
+    <string name="clear_search_cd">ئىزدەشنى تازىلاش</string>
+    <string name="search_results_count">ئىزدەش نەتىجىلىرى (%1$d):</string>
+    <string name="filter_all">ھەممىسى</string>
+    <string name="filter_unpaid">تۆلىمىگەن بار</string>
+    <string name="filter_fully_paid">تولۇق تۆلىگەن</string>
+    <string name="sort_newest">يېڭىسى ئالدىدا</string>
+    <string name="sort_name">ئىسىم بويىچە</string>
+    <string name="sort_progress">تۆلەش نىسبىتى</string>
+
+    <!-- Form & Sheet -->
+    <string name="add_account_fab">يېڭى ھېسابات</string>
+    <string name="form_title_new">يېڭى ھېسابات كىرگۈزۈش</string>
+    <string name="form_title_edit">ھېساباتنى تەھرىرلەش</string>
+    <string name="editing_badge">تەھرىرلىنىۋاتىدۇ</string>
+    <string name="field_name_label">ئىسىم *</string>
+    <string name="field_name_placeholder">مەسئۇل كىشى ئىسمى</string>
+    <string name="field_account_name_label">ھېسابات ئىسمى / نومۇرى *</string>
+    <string name="field_account_name_placeholder">ھېسابات نومۇرى</string>
+    <string name="field_password_label">مەخپىي نومۇرى</string>
+    <string name="field_password_placeholder">مەخپىي نومۇرى</string>
+    <string name="show_password">كۆرسىتىش</string>
+    <string name="hide_password">يوشۇرۇش</string>
+    <string name="field_flow_label">ئېقىم مىقدارى</string>
+    <string name="field_flow_placeholder">مەسىلەن: 100M / 1000GB</string>
+    <string name="field_open_date_label">ئاچقان ۋاقتى</string>
+    <string name="field_open_date_placeholder">ۋاقىت تاللاڭ (YYYY-MM-DD)</string>
+    <string name="pick_date_cd">چېسلا تاللاش</string>
+    <string name="field_street_label">كوچا ئىسمى</string>
+    <string name="field_street_placeholder">كوچا ئىسمى</string>
+    <string name="field_house_label">ئۆي نومۇرى</string>
+    <string name="field_house_placeholder">ئۆي نومۇرى</string>
+    <string name="field_notes_label">ئىزاھات</string>
+    <string name="field_notes_placeholder">قوشۇمچە ئىزاھاتلار...</string>
+    <string name="months_grid_title">12 ئايلىق پۇل تۆلەش ھالىتى (پۇل بەرگەن ئايلارنى بەلگەلەڭ):</string>
+    <string name="month_label_format">%1$d-ئاي</string>
+    <string name="select_all_months">ھەممىسى</string>
+    <string name="clear_all_months">تازىلاش</string>
+    <string name="save_new_account">ھېساباتنى ساقلاش</string>
+    <string name="save_changes">ئۆزگەرتىشنى ساقلاش</string>
+    <string name="cancel_action">بىكار قىلىش</string>
+    <string name="validation_required_fields">ئىسىم ۋە ھېسابات نومۇرىنى چوقۇم تولدۇرۇڭ</string>
+
+    <!-- Card & List -->
+    <string name="saved_accounts_section">ساقلانغان ھېساباتلار جەريانى</string>
+    <string name="account_badge">ھېسابات</string>
+    <string name="account_number_prefix">ھېسابات نومۇرى:</string>
+    <string name="months_paid_ratio">%1$d/12 ئاي</string>
+    <string name="paid_label">بەردى</string>
+    <string name="unpaid_label">بەرمىدى</string>
+    <string name="no_password_label">(مەخپىي نومۇر يوق)</string>
+    <string name="edit_action">تەھرىرلەش</string>
+    <string name="delete_action">ئۆچۈرۈش</string>
+    <string name="copy_account_cd">ھېسابات نومۇرىنى كۆچۈرۈش</string>
+    <string name="copy_password_cd">مەخپىي نومۇرنى كۆچۈرۈش</string>
+    <string name="copied_to_clipboard">%1$s كۆچۈرۈلدى</string>
+
+    <!-- Empty & Loading & Error States -->
+    <string name="empty_accounts_title">ھېچقانداق ھېسابات ساقلانمىغان</string>
+    <string name="empty_accounts_subtitle">ئاستىدىكى «+ يېڭى ھېسابات» كۇنۇپكىسىنى بېسىپ تۇنجى ھېساباتنى قوشۇڭ</string>
+    <string name="empty_search_message">مۇناسىپ ھېسابات تېپىلمىدى.</string>
+    <string name="loading_accounts">ھېساباتلار يۈكلىنىۋاتىدۇ...</string>
+    <string name="retry_action">قايتا سىناش</string>
+
+    <!-- Delete Confirmation Dialog -->
+    <string name="delete_dialog_title">ھېساباتنى ئۆچۈرۈش</string>
+    <string name="delete_dialog_message">«%1$s» ھېساباتىنى ئۆچۈرۈشنى جەزملەشتۈرەمسىز؟ بۇ مەشغۇلاتنى يېنىۋالغىلى بولمايدۇ.</string>
+
+    <!-- Export / Import Messages -->
+    <string name="export_success">زاپاس ھۆججەت مۇۋەپپەقىيەتلىك ساقلاندى!</string>
+    <string name="export_failed">زاپاس ھۆججەت ساقلاشتا خاتالىق كۆرۈلدى.</string>
+    <string name="import_success">%1$d دانە ھېسابات مۇۋەپپەقىيەتلىك يۈكلەندى!</string>
+    <string name="import_empty">يۈكلەيدىغان ئىناۋەتلىك ھېسابات تېپىلمىدى.</string>
+    <string name="import_failed">JSON ھۆججىتىنى ئوقۇشتا خاتالىق كۆرۈلدى.</string>
+    <string name="operation_success_saved">ھېسابات مۇۋەپپەقىيەتلىك ساقلاندى</string>
+    <string name="operation_success_updated">ھېسابات ئۆزگەرتىلدى</string>
+    <string name="operation_success_deleted">ھېسابات ئۆچۈرۈلدى</string>
+    <string name="background_image_cd">تەگلىك مەنزىرە رەسىمى</string>
+</resources>

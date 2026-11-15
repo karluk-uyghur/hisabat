@@ -1,0 +1,6 @@
+{
+  "name": "ھېسابات",
+  "description": "توردىكى ھېساباتلار، ئېقىم مىقدارى ۋە 12 ئايلىق پۇل تۆلەش ھالىتىنى باشقۇرۇش ئەپى",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

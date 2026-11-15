@@ -1,0 +1,68 @@
+{
+  "entities": {
+    "AccountRecord": {
+      "title": "AccountRecord",
+      "description": "An online/network subscriber account record with 12-month payment tracking.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Owner Firebase Auth UID"
+        },
+        "name": {
+          "type": "string",
+          "description": "Subscriber or responsible person name"
+        },
+        "accountName": {
+          "type": "string",
+          "description": "Account identifier or number"
+        },
+        "password": {
+          "type": "string",
+          "description": "Account password (optional)"
+        },
+        "flowAmount": {
+          "type": "string",
+          "description": "Bandwidth or data flow package (e.g., 100M / 1000GB)"
+        },
+        "openDate": {
+          "type": "string",
+          "description": "Account opening date string (YYYY-MM-DD)"
+        },
+        "streetName": {
+          "type": "string",
+          "description": "Street name"
+        },
+        "houseNumber": {
+          "type": "string",
+          "description": "House or apartment number"
+        },
+        "notes": {
+          "type": "string",
+          "description": "Additional notes"
+        },
+        "months": {
+          "type": "array",
+          "description": "12-element boolean array representing monthly payment status from month 1 to 12"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp written via FieldValue.serverTimestamp()"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server last-update timestamp written via FieldValue.serverTimestamp()"
+        }
+      },
+      "required": ["userId", "name", "accountName", "months", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}/accounts/{accountId}": {
+      "schema": { "$ref": "#/entities/AccountRecord" },
+      "description": "User-owned account records subcollection"
+    }
+  }
+}
