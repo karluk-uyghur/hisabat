@@ -2,6 +2,8 @@
     <string name="app_name">ھېسابات</string>
     <string name="app_title">ھېسابات باشقۇرۇش سىستېمىسى</string>
     <string name="app_subtitle">زامانىۋى ئېقىم ۋە ئايلىق ھېساباتلارنى رېشاتكىلىق تەپتىش قىلىش</string>
+    <string name="header_title">ھېسابات باشقۇرۇش</string>
+    <string name="header_subtitle">زامانىۋى ئېقىم ۋە ئايلىق ھېساباتلارنى باشقۇرۇش</string>
 
     <!-- Auth Screen -->
     <string name="auth_welcome_title">خۇش كەپسىز</string>
@@ -16,19 +18,28 @@
     <!-- Stats & Header -->
     <string name="total_accounts_label">جەمئىي ھېساباتلار:</string>
     <string name="paid_months_summary_label">تۆلەنگەن ئايلار</string>
+    <string name="paid_months_label">تۆلەنگەن ئاي</string>
+    <string name="unpaid_months_label">تۆلەنمىگەن</string>
     <string name="fully_paid_accounts_label">تولۇق تۆلىگەن</string>
+    <string name="fully_paid_label">تولۇق تۆلىگەن</string>
     <string name="toggle_theme_cd">تېما ئۆزگەرتىش</string>
+    <string name="cd_toggle_theme">تېما ئۆزگەرتىش</string>
     <string name="backup_menu_cd">زاپاسلاش ۋە يۈكلەش تىزىملىكى</string>
+    <string name="cd_backup_menu">زاپاسلاش ۋە يۈكلەش تىزىملىكى</string>
     <string name="export_backup">زاپاس ھۆججەت چىقىرىش (JSON)</string>
     <string name="import_backup">زاپاس يۈكلەش (JSON)</string>
 
     <!-- Search & Filters -->
     <string name="search_placeholder">ئىسىم، ھېسابات، كوچا ياكى ئۆي نومۇرى ئارقىلىق تېز ئىزدەش...</string>
+    <string name="cd_search">ئىزدەش</string>
     <string name="clear_search_cd">ئىزدەشنى تازىلاش</string>
+    <string name="cd_clear_search">ئىزدەشنى تازىلاش</string>
     <string name="search_results_count">ئىزدەش نەتىجىلىرى (%1$d):</string>
     <string name="filter_all">ھەممىسى</string>
     <string name="filter_unpaid">تۆلىمىگەن بار</string>
+    <string name="filter_has_unpaid">تۆلىمىگەن بار</string>
     <string name="filter_fully_paid">تولۇق تۆلىگەن</string>
+    <string name="filter_current_month_unpaid">بۇ ئاي تۆلىمىگەن</string>
     <string name="sort_newest">يېڭىسى ئالدىدا</string>
     <string name="sort_name">ئىسىم بويىچە</string>
     <string name="sort_progress">تۆلەش نىسبىتى</string>
@@ -95,10 +106,15 @@
     <string name="export_success">زاپاس ھۆججەت مۇۋەپپەقىيەتلىك ساقلاندى!</string>
     <string name="export_failed">زاپاس ھۆججەت ساقلاشتا خاتالىق كۆرۈلدى.</string>
     <string name="import_success">%1$d دانە ھېسابات مۇۋەپپەقىيەتلىك يۈكلەندى!</string>
+    <string name="backup_import_success">%1$d دانە ھېسابات مۇۋەپپەقىيەتلىك يۈكلەندى!</string>
     <string name="import_empty">يۈكلەيدىغان ئىناۋەتلىك ھېسابات تېپىلمىدى.</string>
     <string name="import_failed">JSON ھۆججىتىنى ئوقۇشتا خاتالىق كۆرۈلدى.</string>
+    <string name="backup_invalid_format">زاپاس ھۆججەت فورماتى ئىناۋەتسىز.</string>
     <string name="operation_success_saved">ھېسابات مۇۋەپپەقىيەتلىك ساقلاندى</string>
+    <string name="saved_success">ھېسابات مۇۋەپپەقىيەتلىك ساقلاندى</string>
     <string name="operation_success_updated">ھېسابات ئۆزگەرتىلدى</string>
+    <string name="updated_success">ھېسابات ئۆزگەرتىلدى</string>
     <string name="operation_success_deleted">ھېسابات ئۆچۈرۈلدى</string>
+    <string name="deleted_success">ھېسابات ئۆچۈرۈلدى</string>
     <string name="background_image_cd">تەگلىك مەنزىرە رەسىمى</string>
 </resources>
