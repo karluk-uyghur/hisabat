@@ -1,151 +1,77 @@
 package com.example.data.repository
 
 import android.content.Context
-import com.example.R
-import com.example.data.OperationType
-import com.example.data.handleFirestoreError
 import com.example.data.model.AccountRecord
-import com.google.firebase.Firebase
 import com.google.firebase.Timestamp
-import com.google.firebase.auth.auth
-import com.google.firebase.firestore.DocumentSnapshot
-import com.google.firebase.firestore.FieldValue
-import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.FirebaseFirestoreException
-import com.google.firebase.firestore.snapshots
-import kotlinx.coroutines.CancellationException
+import java.io.File
+import java.util.UUID
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.emitAll
-import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
 
-class AccountRepository(private val db: FirebaseFirestore) {
+class AccountRepository(private val context: Context) {
 
-    constructor(context: Context) : this(
-        FirebaseFirestore.getInstance(
-            context.applicationContext.getString(R.string.firestore_database_id)
-        )
-    )
+    private val mutex = Mutex()
+    private val dbFile: File
+        get() = File(context.filesDir, DB_FILE_NAME)
 
-    private val auth = Firebase.auth
+    private val recordsFlow = MutableStateFlow<List<AccountRecord>>(emptyList())
 
-    private fun requireUserId(): String {
-        return auth.currentUser?.uid
-            ?: throw IllegalStateException("ھېسابات ئۇچۇرلىرىنى زىيارەت قىلىش ئۈچۈن ئالدى بىلەن كىرىشىڭىز كېرەك.")
+    init {
+        recordsFlow.value = readAllFromDisk()
     }
 
-    private fun accountsCollection(uid: String) =
-        db.collection("users").document(uid).collection("accounts")
+    fun observeAccounts(userId: String): Flow<List<AccountRecord>> {
+        return recordsFlow.map { list ->
+            list.filter { it.userId == userId }
+        }
+    }
 
-    fun observeAccounts(userId: String): Flow<List<AccountRecord>> = flow {
-        val path = "users/$userId/accounts"
-        emitAll(
-            accountsCollection(userId)
-                .snapshots()
-                .map { snapshot ->
-                    snapshot.toObjects(
-                        AccountRecord::class.java,
-                        DocumentSnapshot.ServerTimestampBehavior.ESTIMATE
-                    ).sortedByDescending { it.createdAt ?: Timestamp(0, 0) }
+    suspend fun createAccount(record: AccountRecord): Result<String> = withContext(Dispatchers.IO) {
+        runCatching {
+            mutex.withLock {
+                val nowSeconds = System.currentTimeMillis() / 1000
+                val generatedId = if (record.id.isBlank()) UUID.randomUUID().toString() else record.id
+                val newRecord = record.copy(
+                    id = generatedId,
+                    months = record.normalizedMonths(),
+                    createdAt = record.createdAt ?: Timestamp(nowSeconds, 0),
+                    updatedAt = Timestamp(nowSeconds, 0)
+                )
+                val current = recordsFlow.value.toMutableList()
+                current.add(0, newRecord)
+                writeAllToDisk(current)
+                recordsFlow.value = current
+                generatedId
+            }
+        }
+    }
+
+    suspend fun updateAccount(record: AccountRecord): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            mutex.withLock {
+                val nowSeconds = System.currentTimeMillis() / 1000
+                val current = recordsFlow.value.toMutableList()
+                val idx = current.indexOfFirst { it.id == record.id }
+                val updated = record.copy(
+                    months = record.normalizedMonths(),
+                    createdAt = if (idx >= 0) current[idx].createdAt else (record.createdAt ?: Timestamp(nowSeconds, 0)),
+                    updatedAt = Timestamp(nowSeconds, 0)
+                )
+                if (idx >= 0) {
+                    current[idx] = updated
+                } else {
+                    current.add(0, updated)
                 }
-                .catch { error ->
-                    val firestoreError = generateSequence(error) { it.cause }
-                        .filterIsInstance<FirebaseFirestoreException>()
-                        .firstOrNull()
-                    if (firestoreError == null && error is CancellationException) throw error
-                    val exceptionToLog = firestoreError ?: (error as? Exception)
-                    if (exceptionToLog != null && auth.currentUser?.uid == userId) {
-                        handleFirestoreError(exceptionToLog, OperationType.LIST, path)
-                    }
-                    throw error
-                }
-        )
-    }
-
-    suspend fun getAccountById(accountId: String): Result<AccountRecord?> {
-        val uid = try {
-            requireUserId()
-        } catch (e: Exception) {
-            return Result.failure(e)
-        }
-        val docRef = accountsCollection(uid).document(accountId)
-        return try {
-            val snapshot = docRef.get().await()
-            val record = snapshot.toObject(
-                AccountRecord::class.java,
-                DocumentSnapshot.ServerTimestampBehavior.ESTIMATE
-            )
-            Result.success(record)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            handleFirestoreError(e, OperationType.GET, docRef.path)
-            Result.failure(e)
-        }
-    }
-
-    suspend fun createAccount(record: AccountRecord): Result<String> {
-        val uid = try {
-            requireUserId()
-        } catch (e: Exception) {
-            return Result.failure(e)
-        }
-        val docRef = accountsCollection(uid).document()
-        val payload = mapOf(
-            "userId" to uid,
-            "name" to record.name.trim(),
-            "accountName" to record.accountName.trim(),
-            "password" to record.password,
-            "flowAmount" to record.flowAmount.trim(),
-            "openDate" to record.openDate.trim(),
-            "streetName" to record.streetName.trim(),
-            "houseNumber" to record.houseNumber.trim(),
-            "notes" to record.notes.trim(),
-            "months" to record.normalizedMonths(),
-            "createdAt" to FieldValue.serverTimestamp(),
-            "updatedAt" to FieldValue.serverTimestamp()
-        )
-        return try {
-            docRef.set(payload).await()
-            Result.success(docRef.id)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            handleFirestoreError(e, OperationType.CREATE, docRef.path)
-            Result.failure(e)
-        }
-    }
-
-    suspend fun updateAccount(record: AccountRecord): Result<Unit> {
-        val uid = try {
-            requireUserId()
-        } catch (e: Exception) {
-            return Result.failure(e)
-        }
-        require(record.id.isNotBlank()) { "Account ID must not be blank for update" }
-        val docRef = accountsCollection(uid).document(record.id)
-        val updates = mapOf(
-            "name" to record.name.trim(),
-            "accountName" to record.accountName.trim(),
-            "password" to record.password,
-            "flowAmount" to record.flowAmount.trim(),
-            "openDate" to record.openDate.trim(),
-            "streetName" to record.streetName.trim(),
-            "houseNumber" to record.houseNumber.trim(),
-            "notes" to record.notes.trim(),
-            "months" to record.normalizedMonths(),
-            "updatedAt" to FieldValue.serverTimestamp()
-        )
-        return try {
-            docRef.update(updates).await()
-            Result.success(Unit)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            handleFirestoreError(e, OperationType.UPDATE, docRef.path)
-            Result.failure(e)
+                writeAllToDisk(current)
+                recordsFlow.value = current
+            }
         }
     }
 
@@ -153,91 +79,139 @@ class AccountRepository(private val db: FirebaseFirestore) {
         accountId: String,
         currentMonths: List<Boolean>,
         monthIndex: Int
-    ): Result<Unit> {
-        if (monthIndex !in 0..11) {
-            return Result.failure(IllegalArgumentException("Invalid month index: $monthIndex"))
-        }
-        val uid = try {
-            requireUserId()
-        } catch (e: Exception) {
-            return Result.failure(e)
-        }
-        val updatedMonths = MutableList(12) { index -> currentMonths.getOrElse(index) { false } }
-        updatedMonths[monthIndex] = !updatedMonths[monthIndex]
-        val docRef = accountsCollection(uid).document(accountId)
-        val updates = mapOf(
-            "months" to updatedMonths,
-            "updatedAt" to FieldValue.serverTimestamp()
-        )
-        return try {
-            docRef.update(updates).await()
-            Result.success(Unit)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            handleFirestoreError(e, OperationType.UPDATE, docRef.path)
-            Result.failure(e)
-        }
-    }
-
-    suspend fun deleteAccount(accountId: String): Result<Unit> {
-        val uid = try {
-            requireUserId()
-        } catch (e: Exception) {
-            return Result.failure(e)
-        }
-        val docRef = accountsCollection(uid).document(accountId)
-        return try {
-            docRef.delete().await()
-            Result.success(Unit)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            handleFirestoreError(e, OperationType.DELETE, docRef.path)
-            Result.failure(e)
-        }
-    }
-
-    suspend fun importAccounts(records: List<AccountRecord>): Result<Int> {
-        val uid = try {
-            requireUserId()
-        } catch (e: Exception) {
-            return Result.failure(e)
-        }
-        val validRecords = records.filter { it.name.isNotBlank() && it.accountName.isNotBlank() }
-        if (validRecords.isEmpty()) return Result.success(0)
-
-        return try {
-            var count = 0
-            validRecords.chunked(400).forEach { chunk ->
-                val batch = db.batch()
-                chunk.forEach { record ->
-                    val docRef = accountsCollection(uid).document()
-                    val payload = mapOf(
-                        "userId" to uid,
-                        "name" to record.name.trim().take(120),
-                        "accountName" to record.accountName.trim().take(120),
-                        "password" to record.password.take(120),
-                        "flowAmount" to record.flowAmount.trim().take(80),
-                        "openDate" to record.openDate.trim().take(30),
-                        "streetName" to record.streetName.trim().take(120),
-                        "houseNumber" to record.houseNumber.trim().take(60),
-                        "notes" to record.notes.trim().take(500),
-                        "months" to record.normalizedMonths(),
-                        "createdAt" to FieldValue.serverTimestamp(),
-                        "updatedAt" to FieldValue.serverTimestamp()
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            mutex.withLock {
+                if (monthIndex !in 0..11) return@withLock
+                val current = recordsFlow.value.toMutableList()
+                val idx = current.indexOfFirst { it.id == accountId }
+                if (idx >= 0) {
+                    val normalized = List(12) { i -> currentMonths.getOrElse(i) { false } }.toMutableList()
+                    normalized[monthIndex] = !normalized[monthIndex]
+                    val nowSeconds = System.currentTimeMillis() / 1000
+                    current[idx] = current[idx].copy(
+                        months = normalized,
+                        updatedAt = Timestamp(nowSeconds, 0)
                     )
-                    batch.set(docRef, payload)
-                    count++
+                    writeAllToDisk(current)
+                    recordsFlow.value = current
                 }
-                batch.commit().await()
             }
-            Result.success(count)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            handleFirestoreError(e, OperationType.WRITE, "users/$uid/accounts")
-            Result.failure(e)
         }
+    }
+
+    suspend fun deleteAccount(accountId: String): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            mutex.withLock {
+                val current = recordsFlow.value.filterNot { it.id == accountId }
+                writeAllToDisk(current)
+                recordsFlow.value = current
+            }
+        }
+    }
+
+    suspend fun importAccounts(records: List<AccountRecord>): Result<Int> = withContext(Dispatchers.IO) {
+        runCatching {
+            mutex.withLock {
+                val nowSeconds = System.currentTimeMillis() / 1000
+                val current = recordsFlow.value.toMutableList()
+                var importedCount = 0
+                records.forEach { incoming ->
+                    val newId = if (incoming.id.isBlank()) UUID.randomUUID().toString() else incoming.id
+                    val prepared = incoming.copy(
+                        id = newId,
+                        months = incoming.normalizedMonths(),
+                        createdAt = incoming.createdAt ?: Timestamp(nowSeconds, 0),
+                        updatedAt = Timestamp(nowSeconds, 0)
+                    )
+                    val existingIdx = current.indexOfFirst {
+                        it.userId == prepared.userId &&
+                            (it.id == prepared.id ||
+                                (it.accountName.equals(prepared.accountName, ignoreCase = true) &&
+                                    it.name.equals(prepared.name, ignoreCase = true)))
+                    }
+                    if (existingIdx >= 0) {
+                        current[existingIdx] = prepared.copy(id = current[existingIdx].id)
+                    } else {
+                        current.add(0, prepared)
+                    }
+                    importedCount++
+                }
+                writeAllToDisk(current)
+                recordsFlow.value = current
+                importedCount
+            }
+        }
+    }
+
+    private fun readAllFromDisk(): List<AccountRecord> {
+        return try {
+            val file = dbFile
+            if (!file.exists()) return emptyList()
+            val text = file.readText(Charsets.UTF_8)
+            if (text.isBlank()) return emptyList()
+            val array = JSONArray(text)
+            val result = mutableListOf<AccountRecord>()
+            for (i in 0 until array.length()) {
+                val obj = array.optJSONObject(i) ?: continue
+                val monthsArr = obj.optJSONArray("months")
+                val months = List(12) { m -> monthsArr?.optBoolean(m, false) ?: false }
+                val createdSec = obj.optLong("createdAtSec", System.currentTimeMillis() / 1000)
+                val updatedSec = obj.optLong("updatedAtSec", createdSec)
+                result.add(
+                    AccountRecord(
+                        id = obj.optString("id", UUID.randomUUID().toString()),
+                        userId = obj.optString("userId", ""),
+                        name = obj.optString("name", ""),
+                        accountName = obj.optString("accountName", ""),
+                        password = obj.optString("password", ""),
+                        flowAmount = obj.optString("flowAmount", ""),
+                        openDate = obj.optString("openDate", ""),
+                        streetName = obj.optString("streetName", ""),
+                        houseNumber = obj.optString("houseNumber", ""),
+                        notes = obj.optString("notes", ""),
+                        months = months,
+                        createdAt = Timestamp(createdSec, 0),
+                        updatedAt = Timestamp(updatedSec, 0)
+                    )
+                )
+            }
+            result
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    private fun writeAllToDisk(records: List<AccountRecord>) {
+        try {
+            val array = JSONArray()
+            records.forEach { item ->
+                val obj = JSONObject().apply {
+                    put("id", item.id)
+                    put("userId", item.userId)
+                    put("name", item.name)
+                    put("accountName", item.accountName)
+                    put("password", item.password)
+                    put("flowAmount", item.flowAmount)
+                    put("openDate", item.openDate)
+                    put("streetName", item.streetName)
+                    put("houseNumber", item.houseNumber)
+                    put("notes", item.notes)
+                    put("months", JSONArray(item.normalizedMonths()))
+                    put("createdAtSec", item.createdAt?.seconds ?: (System.currentTimeMillis() / 1000))
+                    put("updatedAtSec", item.updatedAt?.seconds ?: (System.currentTimeMillis() / 1000))
+                }
+                array.put(obj)
+            }
+            val tmpFile = File(context.filesDir, "$DB_FILE_NAME.tmp")
+            tmpFile.writeText(array.toString(), Charsets.UTF_8)
+            if (dbFile.exists()) dbFile.delete()
+            tmpFile.renameTo(dbFile)
+        } catch (_: Exception) {
+        }
+    }
+
+    private companion object {
+        const val DB_FILE_NAME = "hesabat_local_vault.json"
     }
 }
