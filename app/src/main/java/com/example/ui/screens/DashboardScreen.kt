@@ -18,8 +18,10 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
@@ -40,18 +42,22 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Badge
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Group
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Sort
+import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material.icons.filled.Warning
@@ -61,6 +67,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -126,6 +133,8 @@ fun DashboardScreen(
     isDarkGlass: Boolean,
     onToggleTheme: () -> Unit,
     currentUsername: String = "",
+    isAdminUser: Boolean = true,
+    onOpenAdminCenter: () -> Unit = {},
     onLockApp: () -> Unit = {},
     onSignOut: () -> Unit = {}
 ) {
@@ -142,6 +151,7 @@ fun DashboardScreen(
     val isSaving by viewModel.isSaving.collectAsStateWithLifecycle()
 
     var showDataMenu by remember { mutableStateOf(false) }
+    var showAdminAnalytics by remember { mutableStateOf(true) }
     var showFormSheet by remember { mutableStateOf(false) }
     var editingAccount by remember { mutableStateOf<AccountRecord?>(null) }
     var pendingDeleteAccount by remember { mutableStateOf<AccountRecord?>(null) }
@@ -204,6 +214,18 @@ fun DashboardScreen(
     val totalCount = allAccounts.size
     val fullyPaidCount = allAccounts.count { it.paidMonthsCount() == 12 }
     val totalPaidMonths = allAccounts.sumOf { it.paidMonthsCount() }
+    val totalPossibleMonths = (totalCount * 12).coerceAtLeast(1)
+    val totalUnpaidMonths = (totalCount * 12 - totalPaidMonths).coerceAtLeast(0)
+    val collectionRatePercent = if (totalCount == 0) 0 else ((totalPaidMonths * 100f) / totalPossibleMonths).toInt()
+    val collectionFraction = if (totalCount == 0) 0f else (totalPaidMonths.toFloat() / totalPossibleMonths.toFloat()).coerceIn(0f, 1f)
+
+    val streetStats = remember(allAccounts) {
+        allAccounts
+            .filter { it.streetName.isNotBlank() }
+            .groupBy { it.streetName.trim() }
+            .map { (street, list) -> street to list.size }
+            .sortedByDescending { it.second }
+    }
 
     val borderColor = if (isDarkGlass) Color.White.copy(alpha = 0.18f) else Color.White.copy(alpha = 0.75f)
     val scrimColors = if (isDarkGlass) {
@@ -297,7 +319,7 @@ fun DashboardScreen(
                         verticalArrangement = Arrangement.spacedBy(14.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        // Header Glass Card (ئەسلىدىكى پۈتۈن كەڭلىكتىكى نورمال قۇرۇلما)
+                        // Header Glass Card (باشقۇرغۇچى مەخسۇس باش تاختىسى)
                         item {
                             Surface(
                                 modifier = Modifier
@@ -312,7 +334,7 @@ fun DashboardScreen(
                                     modifier = Modifier.padding(18.dp),
                                     verticalArrangement = Arrangement.spacedBy(14.dp)
                                 ) {
-                                    // ماۋزۇ ۋە چۈشەندۈرۈش قۇرى (پۈتۈن كەڭلىكتە — خەتلەر تىك قىسىلىپ قالمايدۇ)
+                                    // ماۋزۇ قۇرى (پۈتۈن كەڭلىكتە نورمال كۆرۈنىدۇ)
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         verticalAlignment = Alignment.CenterVertically,
@@ -350,37 +372,74 @@ fun DashboardScreen(
                                         }
                                     }
 
-                                    // ھېسابات نامى ۋە قورال كۇنۇپكىلار قۇرى
+                                    // باشقۇرغۇچى بەلگىسى، كونترول مەركىزى ۋە قورال كۇنۇپكىلار قۇرى
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Surface(
-                                            shape = RoundedCornerShape(14.dp),
-                                            color = EmeraldPaid.copy(alpha = 0.16f),
-                                            border = BorderStroke(1.dp, EmeraldPaid.copy(alpha = 0.45f))
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Row(
-                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            Surface(
+                                                shape = RoundedCornerShape(14.dp),
+                                                color = EmeraldPaid.copy(alpha = 0.16f),
+                                                border = BorderStroke(1.dp, EmeraldPaid.copy(alpha = 0.45f))
                                             ) {
-                                                Icon(
-                                                    imageVector = Icons.Filled.Shield,
-                                                    contentDescription = null,
-                                                    tint = EmeraldPaid,
-                                                    modifier = Modifier.size(16.dp)
-                                                )
-                                                Text(
-                                                    text = if (currentUsername.isNotBlank()) currentUsername else "مۇستەقىل ئامبار",
-                                                    style = MaterialTheme.typography.labelMedium,
-                                                    fontWeight = FontWeight.Bold
-                                                )
+                                                Row(
+                                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Filled.Shield,
+                                                        contentDescription = null,
+                                                        tint = EmeraldPaid,
+                                                        modifier = Modifier.size(16.dp)
+                                                    )
+                                                    Text(
+                                                        text = if (currentUsername.isNotBlank()) currentUsername else "باش باشقۇرغۇچى",
+                                                        style = MaterialTheme.typography.labelMedium,
+                                                        fontWeight = FontWeight.Bold
+                                                    )
+                                                }
+                                            }
+
+                                            Surface(
+                                                shape = RoundedCornerShape(14.dp),
+                                                color = IndigoAccent,
+                                                modifier = Modifier.clickable { onOpenAdminCenter() }
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Filled.Security,
+                                                        contentDescription = null,
+                                                        tint = Color.White,
+                                                        modifier = Modifier.size(15.dp)
+                                                    )
+                                                    Text(
+                                                        text = "باشقۇرغۇچى مەركىزى",
+                                                        style = MaterialTheme.typography.labelMedium,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = Color.White
+                                                    )
+                                                }
                                             }
                                         }
 
-                                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                                            IconButton(onClick = { showAdminAnalytics = !showAdminAnalytics }) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.Speed,
+                                                    contentDescription = null,
+                                                    tint = EmeraldPaid
+                                                )
+                                            }
                                             IconButton(
                                                 onClick = onToggleTheme,
                                                 modifier = Modifier.testTag("toggle_theme_button")
@@ -505,6 +564,172 @@ fun DashboardScreen(
                                                     style = MaterialTheme.typography.labelMedium,
                                                     fontWeight = FontWeight.Bold
                                                 )
+                                            }
+                                        }
+
+                                        Surface(
+                                            shape = RoundedCornerShape(16.dp),
+                                            color = RoseUnpaid.copy(alpha = 0.16f),
+                                            modifier = Modifier.border(
+                                                1.dp,
+                                                RoseUnpaid.copy(alpha = 0.4f),
+                                                RoundedCornerShape(16.dp)
+                                            )
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.Warning,
+                                                    contentDescription = null,
+                                                    tint = RoseUnpaid,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                                Text(
+                                                    text = "تۆلەنمىگەن ئاي: $totalUnpaidMonths",
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = RoseUnpaid
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    // باشقۇرغۇچى ئەقلىي ئانالىز ۋە دوكلات تاختىسى (يېڭى زامانىۋى ئىقتىدار)
+                                    AnimatedVisibility(visible = showAdminAnalytics) {
+                                        Surface(
+                                            shape = RoundedCornerShape(20.dp),
+                                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                                            border = BorderStroke(1.dp, borderColor),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Column(
+                                                modifier = Modifier.padding(14.dp),
+                                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Row(
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Filled.Speed,
+                                                            contentDescription = null,
+                                                            tint = TurquoiseAccent,
+                                                            modifier = Modifier.size(18.dp)
+                                                        )
+                                                        Text(
+                                                            text = "ئومۇمىي پۇل يىغىش نىسبىتى: $collectionRatePercent%",
+                                                            style = MaterialTheme.typography.labelLarge,
+                                                            fontWeight = FontWeight.ExtraBold
+                                                        )
+                                                    }
+
+                                                    Surface(
+                                                        shape = RoundedCornerShape(10.dp),
+                                                        color = IndigoAccent.copy(alpha = 0.2f),
+                                                        border = BorderStroke(1.dp, IndigoAccent.copy(alpha = 0.45f)),
+                                                        modifier = Modifier.clickable {
+                                                            val dateStr = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date())
+                                                            val report = buildString {
+                                                                appendLine("📊 ھېسابات باشقۇرغۇچى دوكلاتى ($dateStr)")
+                                                                appendLine("• جەمئىي ھېساباتلار: $totalCount")
+                                                                appendLine("• تولۇق تۆلىگەنلەر: $fullyPaidCount")
+                                                                appendLine("• جەمئىي تۆلەنگەن ئاي: $totalPaidMonths")
+                                                                appendLine("• جەمئىي تۆلەنمىگەن ئاي: $totalUnpaidMonths")
+                                                                appendLine("• يىغىش نىسبىتى: $collectionRatePercent%")
+                                                                if (streetStats.isNotEmpty()) {
+                                                                    appendLine("• ئورۇنلار تەپسىلاتى: " + streetStats.joinToString("، ") { "${it.first} (${it.second})" })
+                                                                }
+                                                            }
+                                                            clipboardManager.setText(AnnotatedString(report))
+                                                            scope.launch {
+                                                                snackbarHostState.showSnackbar("باشقۇرغۇچى دوكلاتى كۆچۈرۈلدى!")
+                                                            }
+                                                        }
+                                                    ) {
+                                                        Row(
+                                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                                        ) {
+                                                            Icon(
+                                                                imageVector = Icons.Filled.ContentCopy,
+                                                                contentDescription = null,
+                                                                tint = TurquoiseAccent,
+                                                                modifier = Modifier.size(14.dp)
+                                                            )
+                                                            Text(
+                                                                text = "دوكلات چىقىرىش",
+                                                                style = MaterialTheme.typography.labelSmall,
+                                                                fontWeight = FontWeight.Bold
+                                                            )
+                                                        }
+                                                    }
+                                                }
+
+                                                // زامانىۋى گىرادىيېنت تۆلەش بالدىقى
+                                                Box(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .height(10.dp)
+                                                        .clip(RoundedCornerShape(6.dp))
+                                                        .background(Color.White.copy(alpha = 0.12f))
+                                                ) {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .fillMaxWidth(collectionFraction)
+                                                            .fillMaxHeight()
+                                                            .clip(RoundedCornerShape(6.dp))
+                                                            .background(
+                                                                Brush.horizontalGradient(
+                                                                    listOf(IndigoAccent, TurquoiseAccent, EmeraldPaid)
+                                                                )
+                                                            )
+                                                    )
+                                                }
+
+                                                if (streetStats.isNotEmpty()) {
+                                                    HorizontalDivider(color = borderColor)
+                                                    Row(
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .horizontalScroll(rememberScrollState()),
+                                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Text(
+                                                            text = "كوچا/ئورۇنلار:",
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                        )
+                                                        streetStats.forEach { (street, count) ->
+                                                            FilterChip(
+                                                                selected = false,
+                                                                onClick = {
+                                                                    dedicatedSearchTarget = SearchTargetField.LOCATION
+                                                                    dedicatedSearchQuery = street
+                                                                    isSearchPageOpen = true
+                                                                },
+                                                                leadingIcon = {
+                                                                    Icon(
+                                                                        imageVector = Icons.Filled.LocationOn,
+                                                                        contentDescription = null,
+                                                                        tint = RoseUnpaid,
+                                                                        modifier = Modifier.size(15.dp)
+                                                                    )
+                                                                },
+                                                                label = { Text("$street ($count)") }
+                                                            )
+                                                        }
+                                                    }
+                                                }
                                             }
                                         }
                                     }
@@ -662,7 +887,6 @@ fun DashboardScreen(
                                             .testTag("search_input")
                                     )
 
-                                    // ئىسىم، ئورۇن ياكى ھېسابات بويىچە يېڭى ئىزدەش بېتىنى ئېچىش بەلگىلىرى
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
@@ -690,7 +914,6 @@ fun DashboardScreen(
                                         }
                                     }
 
-                                    // Filter & Sort Chips
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
