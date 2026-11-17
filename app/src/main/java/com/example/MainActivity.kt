@@ -11,6 +11,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -33,6 +34,8 @@ import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Badge
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
@@ -68,23 +71,23 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import androidx.credentials.CredentialManager
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.data.preferences.ThemePreferences
 import com.example.data.repository.AccountRepository
-import com.example.ui.auth.attemptAutoSignIn
 import com.example.ui.screens.DashboardScreen
 import com.example.ui.theme.EmeraldPaid
 import com.example.ui.theme.HesabatTheme
@@ -92,8 +95,6 @@ import com.example.ui.theme.IndigoAccent
 import com.example.ui.theme.RoseUnpaid
 import com.example.ui.theme.TurquoiseAccent
 import com.example.ui.viewmodel.AccountViewModel
-import com.google.firebase.Firebase
-import com.google.firebase.auth.auth
 import java.security.MessageDigest
 import kotlinx.coroutines.launch
 import org.json.JSONArray
@@ -103,7 +104,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // باشقا ئۈسكۈنە ۋە ئىز قوغلاش پىروگراممىلىرىنىڭ ئېكراننى تارتىۋېلىشىدىن قوغداش
+        // ئېكراننى رەسىمگە تارتىش، سىنغا ئېلىش ۋە باشقا ئۈسكۈنىلەرنىڭ ئىز قوغلىشىنى قاتتىق چەكلەش
         window.setFlags(
             WindowManager.LayoutParams.FLAG_SECURE,
             WindowManager.LayoutParams.FLAG_SECURE
@@ -141,11 +142,57 @@ class MainActivity : ComponentActivity() {
 data class LocalUserAccount(
     val userId: String,
     val username: String,
-    val passwordHash: String
+    val passwordHash: String,
+    val licenseCode: String
 )
 
 class LocalAuthManager(context: Context) {
     private val prefs = context.getSharedPreferences("hesabat_secure_auth_prefs", Context.MODE_PRIVATE)
+
+    fun verifyAdminPassword(inputPassword: String): Boolean {
+        val savedAdminHash = prefs.getString(KEY_ADMIN_HASH, null)
+        val defaultAdminHash = sha256(DEFAULT_ADMIN_PASSWORD)
+        val activeHash = savedAdminHash ?: defaultAdminHash
+        return sha256(inputPassword.trim()) == activeHash
+    }
+
+    fun updateAdminPassword(newPassword: String): Boolean {
+        val clean = newPassword.trim()
+        if (clean.length < 4) return false
+        prefs.edit().putString(KEY_ADMIN_HASH, sha256(clean)).commit()
+        return true
+    }
+
+    /**
+     * ھەر بىر شەخسنىڭ ھېسابات ئىسمىغا ياكى Gmail ئادرېسىغا باغلاپ ئۆزگىچە ئىجازەت كودى ياساش.
+     * 1-شەخسنىڭ كودى 2-شەخستە قەتئىي ئىشلىمەيدۇ.
+     */
+    fun generateLicenseForAccount(accountName: String): String {
+        val normalized = accountName.trim().lowercase()
+        if (normalized.isEmpty()) return ""
+        val rawHash = sha256("HESABAT_MASTER_KEY_2026::$normalized").uppercase()
+        val part1 = rawHash.substring(0, 4)
+        val part2 = rawHash.substring(4, 8)
+        return "HSB-$part1-$part2"
+    }
+
+    fun isLicenseValidForAccount(accountName: String, enteredCode: String): Boolean {
+        val expected = generateLicenseForAccount(accountName)
+        if (expected.isEmpty()) return false
+        val cleanEntered = enteredCode.trim().uppercase()
+        val compactEntered = cleanEntered.replace("-", "").replace(" ", "")
+        val compactExpected = expected.replace("-", "")
+        return cleanEntered == expected || compactEntered == compactExpected
+    }
+
+    fun verifyExternalGateCode(enteredCode: String): Boolean {
+        val clean = enteredCode.trim()
+        if (clean.isEmpty()) return false
+        if (verifyAdminPassword(clean)) return true
+        val active = getActiveUser()
+        if (active != null && isLicenseValidForAccount(active.username, clean)) return true
+        return getRegisteredUsers().any { isLicenseValidForAccount(it.username, clean) }
+    }
 
     fun getRegisteredUsers(): List<LocalUserAccount> {
         val raw = prefs.getString(KEY_USERS, "[]") ?: "[]"
@@ -154,11 +201,13 @@ class LocalAuthManager(context: Context) {
             val list = mutableListOf<LocalUserAccount>()
             for (i in 0 until arr.length()) {
                 val obj = arr.optJSONObject(i) ?: continue
+                val uname = obj.optString("username")
                 list.add(
                     LocalUserAccount(
                         userId = obj.optString("userId"),
-                        username = obj.optString("username"),
-                        passwordHash = obj.optString("passwordHash")
+                        username = uname,
+                        passwordHash = obj.optString("passwordHash"),
+                        licenseCode = obj.optString("licenseCode").ifBlank { generateLicenseForAccount(uname) }
                     )
                 )
             }
@@ -173,27 +222,63 @@ class LocalAuthManager(context: Context) {
         return getRegisteredUsers().firstOrNull { it.userId == activeId }
     }
 
-    fun registerOrLoginGoogleUser(googleEmailOrName: String): LocalUserAccount {
-        val clean = googleEmailOrName.trim().ifBlank { "Google ھېساباتى" }
-        val userId = "user_" + sha256(clean.lowercase()).take(16)
-        val users = getRegisteredUsers().toMutableList()
-        val existing = users.firstOrNull { it.userId == userId || it.username.equals(clean, ignoreCase = true) }
-        val account = existing ?: LocalUserAccount(
-            userId = userId,
-            username = clean,
-            passwordHash = sha256("google_$userId")
-        ).also {
-            users.add(it)
-            saveUsers(users)
+    fun registerOrLoginGoogleUser(
+        googleEmailOrName: String,
+        password: String,
+        licenseCode: String
+    ): Result<LocalUserAccount> {
+        val cleanEmail = googleEmailOrName.trim()
+        if (cleanEmail.isEmpty()) {
+            return Result.failure(IllegalArgumentException("Google ھېسابات نامى ياكى Gmail نى كىرگۈزۈڭ"))
         }
-        prefs.edit().putString(KEY_ACTIVE_USER_ID, account.userId).commit()
-        return account
+        val users = getRegisteredUsers().toMutableList()
+        val existing = users.firstOrNull { it.username.equals(cleanEmail, ignoreCase = true) }
+
+        if (existing != null) {
+            val isLicenseMatch = isLicenseValidForAccount(existing.username, licenseCode)
+            val isPasswordMatch = password.isNotEmpty() && existing.passwordHash == sha256(password)
+            if (!isLicenseMatch && !isPasswordMatch) {
+                return Result.failure(
+                    IllegalArgumentException("بۇ Google ھېساباتىنىڭ مەخپىي نومۇرى ياكى ئىجازەت كودى خاتا!")
+                )
+            }
+            prefs.edit().putString(KEY_ACTIVE_USER_ID, existing.userId).commit()
+            return Result.success(existing)
+        }
+
+        if (!isLicenseValidForAccount(cleanEmail, licenseCode)) {
+            return Result.failure(
+                IllegalArgumentException("ئىجازەت كودى خاتا ياكى بۇ Google ھېساباتىغا تەۋە ئەمەس! باشقۇرغۇچىدىن مەخسۇس ئىجازەت كودى ئېلىڭ.")
+            )
+        }
+
+        val effectivePassword = password.trim().ifEmpty { licenseCode.trim().uppercase() }
+        val userId = "user_" + sha256(cleanEmail.lowercase()).take(16)
+        val newAccount = LocalUserAccount(
+            userId = userId,
+            username = cleanEmail,
+            passwordHash = sha256(effectivePassword),
+            licenseCode = generateLicenseForAccount(cleanEmail)
+        )
+        users.add(newAccount)
+        saveUsers(users)
+        prefs.edit().putString(KEY_ACTIVE_USER_ID, newAccount.userId).commit()
+        return Result.success(newAccount)
     }
 
-    fun registerUser(username: String, password: String): Result<LocalUserAccount> {
+    fun registerUser(
+        username: String,
+        password: String,
+        licenseCode: String
+    ): Result<LocalUserAccount> {
         val cleanName = username.trim()
         if (cleanName.isEmpty() || password.isEmpty()) {
-            return Result.failure(IllegalArgumentException("ھېسابات ئىسمى ۋە مەخپىي نومۇرنى تولدۇرۇڭ"))
+            return Result.failure(IllegalArgumentException("ھېسابات ئىسمى ۋە مەخپىي نومۇرنى تولۇق كىرگۈزۈڭ"))
+        }
+        if (!isLicenseValidForAccount(cleanName, licenseCode)) {
+            return Result.failure(
+                IllegalArgumentException("ئىجازەت كودى خاتا! ھەر بىر ھېسابات ئىسمى ئۈچۈن باشقۇرغۇچى تەمىنلىگەن مەخسۇس ئىجازەت كودى كېرەك.")
+            )
         }
         val users = getRegisteredUsers().toMutableList()
         val existing = users.firstOrNull { it.username.equals(cleanName, ignoreCase = true) }
@@ -202,13 +287,15 @@ class LocalAuthManager(context: Context) {
                 prefs.edit().putString(KEY_ACTIVE_USER_ID, existing.userId).commit()
                 return Result.success(existing)
             }
-            return Result.failure(IllegalArgumentException("بۇ ھېسابات بۇرۇن ئېچىلغان، «ھېساباتقا كىرىش» نى بېسىپ شۇ مەخپىي نومۇر بىلەن كىرىڭ"))
+            return Result.failure(IllegalArgumentException("بۇ ھېسابات بۇرۇن ئېچىلغان، «ھېساباتقا كىرىش» تىن مەخپىي نومۇر بىلەن كىرىڭ"))
         }
+
         val userId = "user_" + sha256(cleanName.lowercase()).take(16)
         val account = LocalUserAccount(
             userId = userId,
             username = cleanName,
-            passwordHash = sha256(password)
+            passwordHash = sha256(password),
+            licenseCode = generateLicenseForAccount(cleanName)
         )
         users.add(account)
         saveUsers(users)
@@ -216,25 +303,40 @@ class LocalAuthManager(context: Context) {
         return Result.success(account)
     }
 
-    fun loginUser(username: String, password: String): Result<LocalUserAccount> {
+    fun loginUser(
+        username: String,
+        password: String,
+        licenseCode: String
+    ): Result<LocalUserAccount> {
         val cleanName = username.trim()
         val users = getRegisteredUsers()
         val matched = users.firstOrNull { it.username.equals(cleanName, ignoreCase = true) }
-            ?: return Result.failure(IllegalArgumentException("بۇ ھېسابات تېپىلمىدى، ئالدى بىلەن يېڭى ھېسابات ئېچىڭ"))
-        if (matched.passwordHash != sha256(password)) {
+            ?: return Result.failure(IllegalArgumentException("بۇ ھېسابات تېپىلمىدى، ئالدى بىلەن ئىجازەت كودى ئارقىلىق يېڭى ھېسابات ئېچىڭ"))
+
+        val passwordOk = matched.passwordHash == sha256(password)
+        val licenseOk = licenseCode.isNotBlank() && isLicenseValidForAccount(matched.username, licenseCode)
+
+        if (!passwordOk && !licenseOk) {
             return Result.failure(IllegalArgumentException("مەخپىي نومۇر خاتا!"))
         }
         prefs.edit().putString(KEY_ACTIVE_USER_ID, matched.userId).commit()
         return Result.success(matched)
     }
 
+    fun deleteRegisteredUser(userId: String) {
+        val updated = getRegisteredUsers().filterNot { it.userId == userId }
+        saveUsers(updated)
+        if (prefs.getString(KEY_ACTIVE_USER_ID, null) == userId) {
+            prefs.edit().remove(KEY_ACTIVE_USER_ID).commit()
+        }
+    }
+
     fun verifyPassword(user: LocalUserAccount, password: String): Boolean {
-        return user.passwordHash == sha256(password)
+        return user.passwordHash == sha256(password) || isLicenseValidForAccount(user.username, password)
     }
 
     fun logout() {
         prefs.edit().remove(KEY_ACTIVE_USER_ID).commit()
-        runCatching { Firebase.auth.signOut() }
     }
 
     private fun saveUsers(users: List<LocalUserAccount>) {
@@ -245,6 +347,7 @@ class LocalAuthManager(context: Context) {
                     put("userId", u.userId)
                     put("username", u.username)
                     put("passwordHash", u.passwordHash)
+                    put("licenseCode", u.licenseCode)
                 }
             )
         }
@@ -259,6 +362,8 @@ class LocalAuthManager(context: Context) {
     private companion object {
         const val KEY_USERS = "registered_accounts_v2"
         const val KEY_ACTIVE_USER_ID = "active_user_id_v2"
+        const val KEY_ADMIN_HASH = "master_admin_hash_v1"
+        const val DEFAULT_ADMIN_PASSWORD = "162142"
     }
 }
 
@@ -271,8 +376,6 @@ fun AppNavigation(
     onToggleTheme: () -> Unit
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val credentialManager = remember { CredentialManager.create(context) }
     val authManager = remember { LocalAuthManager(context.applicationContext) }
     val repository = remember { AccountRepository(context.applicationContext) }
 
@@ -281,24 +384,48 @@ fun AppNavigation(
     var needExternalPermission by remember { mutableStateOf(isExternalAccess) }
     var manualLockActive by remember { mutableStateOf(false) }
     var showGoogleDialog by remember { mutableStateOf(false) }
+    var showAdminGeneratorDialog by remember { mutableStateOf(false) }
 
     if (needExternalPermission) {
         ExternalProgramPermissionDialog(
             callerName = externalCallerName,
-            onAllow = { needExternalPermission = false },
+            onVerifyCode = { enteredCode: String ->
+                if (authManager.verifyExternalGateCode(enteredCode)) {
+                    needExternalPermission = false
+                    true
+                } else {
+                    false
+                }
+            },
             onDeny = onRejectExternal
         )
     }
 
     if (showGoogleDialog) {
-        GoogleAccountQuickDialog(
+        GoogleAccountAuthDialog(
+            registeredUsers = registeredUsers,
             onDismiss = { showGoogleDialog = false },
-            onConfirmGoogleAccount = { emailOrName ->
-                val user = authManager.registerOrLoginGoogleUser(emailOrName)
-                registeredUsers = authManager.getRegisteredUsers()
-                currentUser = user
-                showGoogleDialog = false
+            onSubmitGoogleAuth = { emailOrName: String, password: String, licenseCode: String ->
+                val result = authManager.registerOrLoginGoogleUser(emailOrName, password, licenseCode)
+                result.onSuccess { user ->
+                    registeredUsers = authManager.getRegisteredUsers()
+                    currentUser = user
+                    showGoogleDialog = false
+                }
+                result.map { Unit }
             }
+        )
+    }
+
+    if (showAdminGeneratorDialog) {
+        AdminLicenseGeneratorDialog(
+            authManager = authManager,
+            registeredUsers = registeredUsers,
+            onUsersChanged = {
+                registeredUsers = authManager.getRegisteredUsers()
+                currentUser = authManager.getActiveUser()
+            },
+            onDismiss = { showAdminGeneratorDialog = false }
         )
     }
 
@@ -306,16 +433,16 @@ fun AppNavigation(
     if (activeAccount == null) {
         AccountPortalScreen(
             registeredUsers = registeredUsers,
-            onLogin = { username: String, password: String ->
-                val res = authManager.loginUser(username, password)
+            onLogin = { username: String, password: String, license: String ->
+                val res = authManager.loginUser(username, password, license)
                 res.onSuccess { user ->
                     registeredUsers = authManager.getRegisteredUsers()
                     currentUser = user
                 }
                 res.map { Unit }
             },
-            onRegister = { username: String, password: String ->
-                val res = authManager.registerUser(username, password)
+            onRegister = { username: String, password: String, license: String ->
+                val res = authManager.registerUser(username, password, license)
                 res.onSuccess { user ->
                     registeredUsers = authManager.getRegisteredUsers()
                     currentUser = user
@@ -323,21 +450,10 @@ fun AppNavigation(
                 res.map { Unit }
             },
             onGoogleSignInClick = {
-                attemptAutoSignIn(
-                    context = context,
-                    credentialManager = credentialManager,
-                    onAuthSuccess = {
-                        val fbUser = runCatching { Firebase.auth.currentUser }.getOrNull()
-                        val googleName = fbUser?.email ?: fbUser?.displayName ?: "Google ھېساباتى"
-                        val user = authManager.registerOrLoginGoogleUser(googleName)
-                        registeredUsers = authManager.getRegisteredUsers()
-                        currentUser = user
-                    },
-                    onUnauthenticated = {
-                        showGoogleDialog = true
-                    },
-                    scope = scope
-                )
+                showGoogleDialog = true
+            },
+            onOpenAdminGenerator = {
+                showAdminGeneratorDialog = true
             }
         )
     } else {
@@ -351,6 +467,10 @@ fun AppNavigation(
                     } else {
                         false
                     }
+                },
+                onOpenAdminPanel = {
+                    manualLockActive = false
+                    showAdminGeneratorDialog = true
                 },
                 onSwitchAccount = {
                     manualLockActive = false
@@ -386,11 +506,268 @@ fun AppNavigation(
 }
 
 @Composable
-private fun GoogleAccountQuickDialog(
-    onDismiss: () -> Unit,
-    onConfirmGoogleAccount: (String) -> Unit
+private fun AdminLicenseGeneratorDialog(
+    authManager: LocalAuthManager,
+    registeredUsers: List<LocalUserAccount>,
+    onUsersChanged: () -> Unit,
+    onDismiss: () -> Unit
 ) {
-    var googleAccountInput by remember { mutableStateOf("") }
+    val clipboardManager = LocalClipboardManager.current
+    var isAdminUnlocked by remember { mutableStateOf(false) }
+    var adminPasswordInput by remember { mutableStateOf("") }
+    var adminError by remember { mutableStateOf<String?>(null) }
+
+    var targetUsername by remember { mutableStateOf("") }
+    var generatedCode by remember { mutableStateOf("") }
+    var copiedNotice by remember { mutableStateOf(false) }
+
+    var showChangeAdminPwd by remember { mutableStateOf(false) }
+    var newAdminPwd by remember { mutableStateOf("") }
+    var pwdChangedMsg by remember { mutableStateOf<String?>(null) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            Icon(
+                imageVector = Icons.Filled.Security,
+                contentDescription = null,
+                tint = EmeraldPaid,
+                modifier = Modifier.size(40.dp)
+            )
+        },
+        title = {
+            Text(
+                text = if (isAdminUnlocked) "ئىجازەت كودى ياساش مەركىزى" else "باشقۇرغۇچى دەلىللەش",
+                fontWeight = FontWeight.ExtraBold,
+                textAlign = TextAlign.Center
+            )
+        },
+        text = {
+            if (!isAdminUnlocked) {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "بۇ بۆلۈمگە پەقەت ئەپ ئىگىسىلا كىرەلەيدۇ. باشقۇرغۇچى مەخپىي نومۇرىنى كىرگۈزۈڭ:",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    OutlinedTextField(
+                        value = adminPasswordInput,
+                        onValueChange = {
+                            adminPasswordInput = it
+                            adminError = null
+                        },
+                        label = { Text("باشقۇرغۇچى مەخپىي نومۇرى") },
+                        leadingIcon = { Icon(Icons.Filled.Key, contentDescription = null, tint = IndigoAccent) },
+                        visualTransformation = PasswordVisualTransformation(),
+                        singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    if (adminError != null) {
+                        Text(
+                            text = adminError.orEmpty(),
+                            color = RoseUnpaid,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            } else {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = "ئىشلەتكۈچىنىڭ ھېسابات ئىسمى ياكى Gmail ئادرېسىنى يازسىڭىز، پەقەت شۇ كىشىنىڭ شۇ ھېساباتىغىلا ئىشلەيدىغان مەخسۇس ئىجازەت كودى ياسىلىدۇ:",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+
+                    OutlinedTextField(
+                        value = targetUsername,
+                        onValueChange = {
+                            targetUsername = it
+                            generatedCode = authManager.generateLicenseForAccount(it)
+                            copiedNotice = false
+                        },
+                        label = { Text("ھېسابات ئىسمى ياكى Gmail") },
+                        placeholder = { Text("مەسىلەن: alim ياكى alim@gmail.com") },
+                        leadingIcon = { Icon(Icons.Filled.Person, contentDescription = null, tint = TurquoiseAccent) },
+                        singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    if (generatedCode.isNotBlank()) {
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = EmeraldPaid.copy(alpha = 0.16f),
+                            border = BorderStroke(1.5.dp, EmeraldPaid),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(14.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    text = "«${targetUsername.trim()}» نىڭ مەخسۇس ئىجازەت كودى:",
+                                    style = MaterialTheme.typography.labelSmall
+                                )
+                                Text(
+                                    text = generatedCode,
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = EmeraldPaid
+                                )
+                                Button(
+                                    onClick = {
+                                        clipboardManager.setText(AnnotatedString(generatedCode))
+                                        copiedNotice = true
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = IndigoAccent),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Icon(Icons.Filled.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(if (copiedNotice) "كۆچۈرۈلدى!" else "ئىجازەت كودىنى كۆچۈرۈش", color = Color.White)
+                                }
+                            }
+                        }
+                    }
+
+                    if (registeredUsers.isNotEmpty()) {
+                        HorizontalDivider()
+                        Text(
+                            text = "ئىجازەت بېرىلگەن ھېساباتلار (${registeredUsers.size}):",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        registeredUsers.forEach { acc ->
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(acc.username, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                        Text("كودى: ${acc.licenseCode}", style = MaterialTheme.typography.labelSmall, color = TurquoiseAccent)
+                                    }
+                                    Row {
+                                        IconButton(
+                                            onClick = {
+                                                clipboardManager.setText(AnnotatedString(acc.licenseCode))
+                                            }
+                                        ) {
+                                            Icon(Icons.Filled.ContentCopy, contentDescription = null, tint = IndigoAccent, modifier = Modifier.size(18.dp))
+                                        }
+                                        IconButton(
+                                            onClick = {
+                                                authManager.deleteRegisteredUser(acc.userId)
+                                                onUsersChanged()
+                                            }
+                                        ) {
+                                            Icon(Icons.Filled.Delete, contentDescription = null, tint = RoseUnpaid, modifier = Modifier.size(18.dp))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    HorizontalDivider()
+                    Text(
+                        text = if (showChangeAdminPwd) "باشقۇرغۇچى مەخپىي نومۇرىنى يېڭىلاش:" else "⚙ باشقۇرغۇچى مەخپىي نومۇرىنى ئۆزگەرتىش",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = TurquoiseAccent,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.clickable { showChangeAdminPwd = !showChangeAdminPwd }
+                    )
+
+                    AnimatedVisibility(visible = showChangeAdminPwd) {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(
+                                value = newAdminPwd,
+                                onValueChange = { newAdminPwd = it },
+                                label = { Text("يېڭى باشقۇرغۇچى مەخپىي نومۇرى") },
+                                singleLine = true,
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Button(
+                                onClick = {
+                                    if (authManager.updateAdminPassword(newAdminPwd)) {
+                                        pwdChangedMsg = "باشقۇرغۇچى مەخپىي نومۇرى مۇۋەپپەقىيەتلىك ئۆزگەرتىلدى!"
+                                        newAdminPwd = ""
+                                    } else {
+                                        pwdChangedMsg = "كەم دېگەندە 4 خانىلىق نومۇر كىرگۈزۈڭ"
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = EmeraldPaid),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("ساقلاش", color = Color.White, fontWeight = FontWeight.Bold)
+                            }
+                            if (pwdChangedMsg != null) {
+                                Text(pwdChangedMsg.orEmpty(), style = MaterialTheme.typography.labelSmall, color = EmeraldPaid)
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            if (!isAdminUnlocked) {
+                Button(
+                    onClick = {
+                        if (authManager.verifyAdminPassword(adminPasswordInput)) {
+                            isAdminUnlocked = true
+                            adminError = null
+                        } else {
+                            adminError = "باشقۇرغۇچى مەخپىي نومۇرى خاتا!"
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = IndigoAccent)
+                ) {
+                    Text("دەلىللەپ كىرىش", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            } else {
+                Button(
+                    onClick = onDismiss,
+                    colors = ButtonDefaults.buttonColors(containerColor = IndigoAccent)
+                ) {
+                    Text("تاقاش", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            }
+        },
+        dismissButton = {
+            if (!isAdminUnlocked) {
+                TextButton(onClick = onDismiss) {
+                    Text("بىكار قىلىش")
+                }
+            }
+        }
+    )
+}
+
+@Composable
+private fun GoogleAccountAuthDialog(
+    registeredUsers: List<LocalUserAccount>,
+    onDismiss: () -> Unit,
+    onSubmitGoogleAuth: (String, String, String) -> Result<Unit>
+) {
+    var googleEmail by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var licenseCode by remember { mutableStateOf("") }
+    var errorMsg by remember { mutableStateOf<String?>(null) }
+
+    val isExistingGoogleUser = remember(googleEmail, registeredUsers) {
+        registeredUsers.any { it.username.equals(googleEmail.trim(), ignoreCase = true) }
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         icon = {
@@ -398,37 +775,81 @@ private fun GoogleAccountQuickDialog(
                 imageVector = Icons.Filled.AccountCircle,
                 contentDescription = null,
                 tint = TurquoiseAccent,
-                modifier = Modifier.size(40.dp)
+                modifier = Modifier.size(42.dp)
             )
         },
         title = {
-            Text("Google ھېساباتى بىلەن كىرىش", fontWeight = FontWeight.Bold)
+            Text("Google ھېساباتى بىلەن كىرىش", fontWeight = FontWeight.ExtraBold)
         },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
                 Text(
-                    text = "Google ئېلخەت ئادرېسىڭىزنى (Gmail) ياكى ھېسابات نامىڭىزنى كىرگۈزۈڭ. بۇ ھېساباتنىڭ بارلىق مەلۇماتلىرى مەڭگۈلۈك ساقلىنىدۇ:",
+                    text = "Gmail ئادرېسىڭىزنى ۋە شۇ ھېساباتقا بېرىلگەن مەخسۇس ئىجازەت كودىنى كىرگۈزۈڭ. مەلۇماتلىرىڭىز مەڭگۈلۈك ساقلىنىدۇ:",
                     style = MaterialTheme.typography.bodySmall
                 )
                 OutlinedTextField(
-                    value = googleAccountInput,
-                    onValueChange = { googleAccountInput = it },
-                    label = { Text("Gmail ياكى Google ھېسابات نامى") },
+                    value = googleEmail,
+                    onValueChange = {
+                        googleEmail = it
+                        errorMsg = null
+                    },
+                    label = { Text("Gmail ئادرېسى ياكى Google نامى *") },
                     placeholder = { Text("example@gmail.com") },
+                    leadingIcon = { Icon(Icons.Filled.AccountCircle, contentDescription = null, tint = TurquoiseAccent) },
                     singleLine = true,
-                    shape = RoundedCornerShape(14.dp)
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.fillMaxWidth()
                 )
+                OutlinedTextField(
+                    value = licenseCode,
+                    onValueChange = {
+                        licenseCode = it.uppercase()
+                        errorMsg = null
+                    },
+                    label = {
+                        Text(if (isExistingGoogleUser) "ئىجازەت كودى (ياكى مەخپىي نومۇر)" else "مەخسۇس ئىجازەت كودى (HSB-XXXX-XXXX) *")
+                    },
+                    placeholder = { Text("HSB-XXXX-XXXX") },
+                    leadingIcon = { Icon(Icons.Filled.Security, contentDescription = null, tint = EmeraldPaid) },
+                    singleLine = true,
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = {
+                        password = it
+                        errorMsg = null
+                    },
+                    label = { Text("مەخپىي نومۇر بېكىتىش (ئىختىيارىي)") },
+                    leadingIcon = { Icon(Icons.Filled.Key, contentDescription = null, tint = IndigoAccent) },
+                    visualTransformation = PasswordVisualTransformation(),
+                    singleLine = true,
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                if (errorMsg != null) {
+                    Text(
+                        text = errorMsg.orEmpty(),
+                        color = RoseUnpaid,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
         },
         confirmButton = {
             Button(
                 onClick = {
-                    val finalName = googleAccountInput.trim().ifEmpty { "Google ھېساباتى" }
-                    onConfirmGoogleAccount(finalName)
+                    val res = onSubmitGoogleAuth(googleEmail, password, licenseCode)
+                    res.onFailure { err -> errorMsg = err.message }
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = IndigoAccent)
             ) {
-                Text("كىرىش", color = Color.White, fontWeight = FontWeight.Bold)
+                Text("دەلىللەپ كىرىش", color = Color.White, fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {
@@ -442,10 +863,12 @@ private fun GoogleAccountQuickDialog(
 @Composable
 private fun ExternalProgramPermissionDialog(
     callerName: String,
-    onAllow: () -> Unit,
+    onVerifyCode: (String) -> Boolean,
     onDeny: () -> Unit
 ) {
     var code by remember { mutableStateOf("") }
+    var errorMsg by remember { mutableStateOf<String?>(null) }
+
     AlertDialog(
         onDismissRequest = {},
         icon = {
@@ -465,24 +888,43 @@ private fun ExternalProgramPermissionDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
-                    text = "«$callerName» بۇ ئەپكە ئۇلانماقچى بولدى. ئىز قوغلاشنى چەكلەش سىستېمىسى ئۇنى توسۇپ قالدى. ئىجازەت بېرەمسىز؟",
+                    text = "«$callerName» بۇ ئەپكە ئۇلانماقچى بولدى. باشقۇرغۇچى تەمىنلىگەن رەسمىي ئىجازەت كودىنى كىرگۈزمىگۈچە كىرىشكە رۇخسەت قىلىنمايدۇ:",
                     style = MaterialTheme.typography.bodyMedium
                 )
                 OutlinedTextField(
                     value = code,
-                    onValueChange = { code = it },
-                    label = { Text("ئىجازەت مەخپىي نومۇرى (ئىختىيارىي)") },
+                    onValueChange = {
+                        code = it
+                        errorMsg = null
+                    },
+                    label = { Text("رەسمىي ئىجازەت كودى *") },
+                    placeholder = { Text("HSB-XXXX-XXXX") },
+                    leadingIcon = { Icon(Icons.Filled.Key, contentDescription = null, tint = EmeraldPaid) },
+                    visualTransformation = PasswordVisualTransformation(),
                     singleLine = true,
-                    shape = RoundedCornerShape(14.dp)
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.fillMaxWidth()
                 )
+                if (errorMsg != null) {
+                    Text(
+                        text = errorMsg.orEmpty(),
+                        color = RoseUnpaid,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
         },
         confirmButton = {
             Button(
-                onClick = onAllow,
+                onClick = {
+                    if (!onVerifyCode(code)) {
+                        errorMsg = "ئىجازەت كودى خاتا! خالىغانچە كىرىشكە رۇخسەت يوق."
+                    }
+                },
                 colors = ButtonDefaults.buttonColors(containerColor = EmeraldPaid)
             ) {
-                Text("ئىجازەت بېرىش", color = Color.White, fontWeight = FontWeight.Bold)
+                Text("دەلىللەپ ئىجازەت بېرىش", color = Color.White, fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {
@@ -490,7 +932,7 @@ private fun ExternalProgramPermissionDialog(
                 onClick = onDeny,
                 colors = ButtonDefaults.buttonColors(containerColor = RoseUnpaid)
             ) {
-                Text("رەت قىلىش", color = Color.White, fontWeight = FontWeight.Bold)
+                Text("رەت قىلىپ چېكىنىش", color = Color.White, fontWeight = FontWeight.Bold)
             }
         }
     )
@@ -500,6 +942,7 @@ private fun ExternalProgramPermissionDialog(
 private fun PasswordPermissionDialog(
     username: String,
     onVerify: (String) -> Boolean,
+    onOpenAdminPanel: () -> Unit,
     onSwitchAccount: () -> Unit
 ) {
     var pwd by remember { mutableStateOf("") }
@@ -515,28 +958,36 @@ private fun PasswordPermissionDialog(
         },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("«$username» ھېساباتىنى ئېچىش ئۈچۈن مەخپىي نومۇرنى كىرگۈزۈڭ:")
+                Text("«$username» ھېساباتىنى ئېچىش ئۈچۈن مەخپىي نومۇر ياكى ئىجازەت كودىنى كىرگۈزۈڭ:")
                 OutlinedTextField(
                     value = pwd,
                     onValueChange = {
                         pwd = it
                         err = null
                     },
-                    label = { Text("مەخپىي نومۇر") },
+                    label = { Text("مەخپىي نومۇر ياكى ئىجازەت كودى") },
                     visualTransformation = PasswordVisualTransformation(),
                     singleLine = true,
-                    shape = RoundedCornerShape(14.dp)
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.fillMaxWidth()
                 )
                 if (err != null) {
                     Text(err.orEmpty(), color = RoseUnpaid, style = MaterialTheme.typography.bodySmall)
                 }
+                Text(
+                    text = "🔑 باشقۇرغۇچى ئىجازەت كودى ياساش مەركىزى",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = TurquoiseAccent,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.clickable { onOpenAdminPanel() }
+                )
             }
         },
         confirmButton = {
             Button(
                 onClick = {
                     if (!onVerify(pwd)) {
-                        err = "مەخپىي نومۇر خاتا!"
+                        err = "مەخپىي نومۇر ياكى ئىجازەت كودى خاتا!"
                     }
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = IndigoAccent)
@@ -555,13 +1006,15 @@ private fun PasswordPermissionDialog(
 @Composable
 private fun AccountPortalScreen(
     registeredUsers: List<LocalUserAccount>,
-    onLogin: (String, String) -> Result<Unit>,
-    onRegister: (String, String) -> Result<Unit>,
-    onGoogleSignInClick: () -> Unit
+    onLogin: (String, String, String) -> Result<Unit>,
+    onRegister: (String, String, String) -> Result<Unit>,
+    onGoogleSignInClick: () -> Unit,
+    onOpenAdminGenerator: () -> Unit
 ) {
     var isRegisterMode by remember { mutableStateOf(registeredUsers.isEmpty()) }
     var username by remember { mutableStateOf(registeredUsers.firstOrNull()?.username.orEmpty()) }
     var password by remember { mutableStateOf("") }
+    var licenseCode by remember { mutableStateOf("") }
     var showPassword by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
@@ -602,9 +1055,36 @@ private fun AccountPortalScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
+                    // باشقۇرغۇچى ئىجازەت كودى ياساش كۇنۇپكىسى (پەقەت سىزلا مەخپىي نومۇر بىلەن كىرەلەيسىز)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = IndigoAccent.copy(alpha = 0.16f),
+                            border = BorderStroke(1.dp, IndigoAccent.copy(alpha = 0.45f)),
+                            modifier = Modifier.clickable { onOpenAdminGenerator() }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(Icons.Filled.Key, contentDescription = null, tint = TurquoiseAccent, modifier = Modifier.size(15.dp))
+                                Text(
+                                    text = "ئىجازەت كودى ياساش (باشقۇرغۇچى)",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = TurquoiseAccent
+                                )
+                            }
+                        }
+                    }
+
                     Box(
                         modifier = Modifier
-                            .size(72.dp)
+                            .size(70.dp)
                             .clip(RoundedCornerShape(22.dp))
                             .background(Brush.linearGradient(listOf(IndigoAccent, TurquoiseAccent))),
                         contentAlignment = Alignment.Center
@@ -613,7 +1093,7 @@ private fun AccountPortalScreen(
                             imageVector = Icons.Filled.AccountBalanceWallet,
                             contentDescription = null,
                             tint = Color.White,
-                            modifier = Modifier.size(38.dp)
+                            modifier = Modifier.size(36.dp)
                         )
                     }
 
@@ -636,7 +1116,7 @@ private fun AccountPortalScreen(
                         ) {
                             Icon(Icons.Filled.Shield, contentDescription = null, tint = EmeraldPaid, modifier = Modifier.size(16.dp))
                             Text(
-                                text = "مەڭگۈلۈك ساقلاش ئامبىرى • ئىز قوغلاشتىن قوغدالغان",
+                                text = "ھەر بىر كىشىگە مەخسۇس ئىجازەت كودى بىلەن قوغدالغان",
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold
                             )
@@ -691,6 +1171,7 @@ private fun AccountPortalScreen(
                                         onClick = {
                                             username = acc.username
                                             isRegisterMode = false
+                                            errorMessage = null
                                         },
                                         leadingIcon = { Icon(Icons.Filled.CheckCircle, contentDescription = null, modifier = Modifier.size(16.dp), tint = EmeraldPaid) },
                                         label = { Text(acc.username) }
@@ -755,6 +1236,32 @@ private fun AccountPortalScreen(
                         modifier = Modifier.fillMaxWidth()
                     )
 
+                    AnimatedVisibility(visible = isRegisterMode) {
+                        OutlinedTextField(
+                            value = licenseCode,
+                            onValueChange = {
+                                licenseCode = it.uppercase()
+                                errorMessage = null
+                            },
+                            label = { Text("شەخسىي ئىجازەت كودى (HSB-XXXX-XXXX) *") },
+                            placeholder = { Text("HSB-XXXX-XXXX") },
+                            leadingIcon = {
+                                Box(
+                                    modifier = Modifier
+                                        .size(34.dp)
+                                        .clip(CircleShape)
+                                    .background(EmeraldPaid.copy(alpha = 0.18f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(Icons.Filled.Security, contentDescription = null, tint = EmeraldPaid, modifier = Modifier.size(18.dp))
+                                }
+                            },
+                            singleLine = true,
+                            shape = RoundedCornerShape(16.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+
                     if (errorMessage != null) {
                         Text(
                             text = errorMessage.orEmpty(),
@@ -768,9 +1275,9 @@ private fun AccountPortalScreen(
                     Button(
                         onClick = {
                             val res = if (isRegisterMode) {
-                                onRegister(username, password)
+                                onRegister(username, password, licenseCode)
                             } else {
-                                onLogin(username, password)
+                                onLogin(username, password, licenseCode)
                             }
                             res.onFailure { err -> errorMessage = err.message }
                         },
@@ -787,7 +1294,7 @@ private fun AccountPortalScreen(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = if (isRegisterMode) "ھېسابات ئېچىپ كىرىش" else "ھېساباتقا كىرىش",
+                            text = if (isRegisterMode) "ئىجازەت كودى بىلەن ھېسابات ئېچىش" else "ھېساباتقا كىرىش",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = Color.White
