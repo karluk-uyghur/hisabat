@@ -126,6 +126,48 @@ enum class SearchTargetField(val title: String, val icon: ImageVector) {
     ACCOUNT("ھېسابات نومۇرى", Icons.Filled.Badge)
 }
 
+@Composable
+fun StatBadgePill(
+    icon: ImageVector,
+    text: String,
+    bgColor: Color,
+    contentColor: Color,
+    borderColor: Color = Color.Transparent
+) {
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = bgColor,
+        border = if (borderColor != Color.Transparent) BorderStroke(1.dp, borderColor) else null
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Icon(icon, contentDescription = null, tint = contentColor, modifier = Modifier.size(16.dp))
+            Text(text, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = contentColor)
+        }
+    }
+}
+
+@Composable
+fun TermIconChip(icon: ImageVector, label: String, tint: Color) {
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = tint.copy(alpha = 0.14f),
+        border = BorderStroke(1.dp, tint.copy(alpha = 0.4f))
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(15.dp))
+            Text(label, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
+        }
+    }
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun DashboardScreen(
@@ -154,7 +196,6 @@ fun DashboardScreen(
     var editingAccount by remember { mutableStateOf<AccountRecord?>(null) }
     var pendingDeleteAccount by remember { mutableStateOf<AccountRecord?>(null) }
 
-    // يېڭى ئىزدەش بېتى ھالىتى
     var isSearchPageOpen by remember { mutableStateOf(false) }
     var searchPageQuery by remember { mutableStateOf("") }
     var searchTargetField by remember { mutableStateOf(SearchTargetField.ALL) }
@@ -172,9 +213,7 @@ fun DashboardScreen(
         if (uri != null) {
             try {
                 val json = viewModel.buildBackupJson()
-                context.contentResolver.openOutputStream(uri)?.use { out ->
-                    out.write(json.toByteArray(Charsets.UTF_8))
-                }
+                context.contentResolver.openOutputStream(uri)?.use { it.write(json.toByteArray(Charsets.UTF_8)) }
                 scope.launch { snackbarHostState.showSnackbar(exportSuccessMsg) }
             } catch (_: Exception) {
                 scope.launch { snackbarHostState.showSnackbar(exportFailedMsg) }
@@ -187,21 +226,13 @@ fun DashboardScreen(
     ) { uri ->
         if (uri != null) {
             try {
-                val jsonText = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use {
-                    it.readText()
-                } ?: ""
+                val jsonText = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: ""
                 viewModel.importBackupJson(
                     jsonString = jsonText,
                     onSuccess = { count ->
-                        scope.launch {
-                            snackbarHostState.showSnackbar(
-                                context.getString(R.string.import_success, count)
-                            )
-                        }
+                        scope.launch { snackbarHostState.showSnackbar(context.getString(R.string.import_success, count)) }
                     },
-                    onError = { msg ->
-                        scope.launch { snackbarHostState.showSnackbar(msg) }
-                    }
+                    onError = { msg -> scope.launch { snackbarHostState.showSnackbar(msg) } }
                 )
             } catch (_: Exception) {
                 scope.launch { snackbarHostState.showSnackbar(importFailedMsg) }
@@ -216,10 +247,11 @@ fun DashboardScreen(
     val totalUnpaidMonths = (totalCount * 12 - totalPaidMonths).coerceAtLeast(0)
 
     val borderColor = if (isDarkGlass) Color.White.copy(alpha = 0.18f) else Color.White.copy(alpha = 0.75f)
-    val scrimColors = if (isDarkGlass) {
-        listOf(Color(0x99060E1F), Color(0xCC0A162E))
-    } else {
-        listOf(Color(0x33FFFFFF), Color(0x66E2E8F0))
+    val scrimColors = if (isDarkGlass) listOf(Color(0x99060E1F), Color(0xCC0A162E)) else listOf(Color(0x33FFFFFF), Color(0x66E2E8F0))
+
+    val copyHandler: (String, String) -> Unit = { label, value ->
+        clipboardManager.setText(AnnotatedString(value))
+        scope.launch { snackbarHostState.showSnackbar(context.getString(R.string.copied_to_clipboard, label)) }
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -229,43 +261,28 @@ fun DashboardScreen(
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize()
         )
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Brush.verticalGradient(colors = scrimColors))
-        )
+        Box(modifier = Modifier.fillMaxSize().background(Brush.verticalGradient(colors = scrimColors)))
 
         if (isSearchPageOpen) {
-            BackHandler {
-                isSearchPageOpen = false
-            }
+            BackHandler { isSearchPageOpen = false }
             SearchResultsDedicatedPage(
                 allAccounts = allAccounts,
                 initialQuery = searchPageQuery,
                 selectedTarget = searchTargetField,
                 isDarkGlass = isDarkGlass,
                 borderColor = borderColor,
-                onQueryChange = { searchPageQuery = it },
-                onTargetChange = { searchTargetField = it },
+                onQueryChange = { q: String -> searchPageQuery = q },
+                onTargetChange = { t: SearchTargetField -> searchTargetField = t },
                 onBack = { isSearchPageOpen = false },
-                onEditClick = { account ->
-                    editingAccount = account
+                onEditClick = { acc: AccountRecord ->
+                    editingAccount = acc
                     showFormSheet = true
                 },
-                onDeleteClick = { account -> pendingDeleteAccount = account },
-                onToggleMonth = { account, mIdx ->
-                    viewModel.toggleMonth(account, mIdx) { err ->
-                        scope.launch { snackbarHostState.showSnackbar(err) }
-                    }
+                onDeleteClick = { acc: AccountRecord -> pendingDeleteAccount = acc },
+                onToggleMonth = { acc: AccountRecord, mIdx: Int ->
+                    viewModel.toggleMonth(acc, mIdx) { err -> scope.launch { snackbarHostState.showSnackbar(err) } }
                 },
-                onCopyText = { label, value ->
-                    clipboardManager.setText(AnnotatedString(value))
-                    scope.launch {
-                        snackbarHostState.showSnackbar(
-                            context.getString(R.string.copied_to_clipboard, label)
-                        )
-                    }
-                }
+                onCopyText = copyHandler
             )
         } else {
             Scaffold(
@@ -279,60 +296,36 @@ fun DashboardScreen(
                             showFormSheet = true
                         },
                         icon = { Icon(Icons.Filled.Add, contentDescription = null) },
-                        text = {
-                            Text(
-                                text = stringResource(R.string.add_account_fab),
-                                fontWeight = FontWeight.Bold
-                            )
-                        },
+                        text = { Text(stringResource(R.string.add_account_fab), fontWeight = FontWeight.Bold) },
                         containerColor = IndigoAccent,
                         contentColor = Color.White,
                         modifier = Modifier.testTag("add_account_fab")
                     )
                 }
             ) { innerPadding ->
-                BoxWithConstraints(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(innerPadding)
-                ) {
-                    val isWide = maxWidth >= 720.dp
+                BoxWithConstraints(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
                     val isCompact = maxWidth < 420.dp
 
                     LazyColumn(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(horizontal = 16.dp),
+                        modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
                         contentPadding = PaddingValues(top = 12.dp, bottom = 96.dp),
                         verticalArrangement = Arrangement.spacedBy(14.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        // باش بەت كۆركەم ئەينەك تاختىسى
                         item {
                             Surface(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .widthIn(max = 960.dp)
-                                    .border(1.dp, borderColor, RoundedCornerShape(28.dp)),
+                                modifier = Modifier.fillMaxWidth().widthIn(max = 960.dp).border(1.dp, borderColor, RoundedCornerShape(28.dp)),
                                 shape = RoundedCornerShape(28.dp),
                                 color = MaterialTheme.colorScheme.surface,
                                 tonalElevation = 8.dp
                             ) {
                                 Column {
                                     Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(6.dp)
-                                            .background(
-                                                Brush.horizontalGradient(
-                                                    listOf(IndigoAccent, TurquoiseAccent, EmeraldPaid)
-                                                )
-                                            )
+                                        modifier = Modifier.fillMaxWidth().height(6.dp).background(
+                                            Brush.horizontalGradient(listOf(IndigoAccent, TurquoiseAccent, EmeraldPaid))
+                                        )
                                     )
-                                    Column(
-                                        modifier = Modifier.padding(18.dp),
-                                        verticalArrangement = Arrangement.spacedBy(14.dp)
-                                    ) {
+                                    Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                                         Row(
                                             modifier = Modifier.fillMaxWidth(),
                                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -344,45 +337,19 @@ fun DashboardScreen(
                                                 modifier = Modifier.weight(1f)
                                             ) {
                                                 Box(
-                                                    modifier = Modifier
-                                                        .size(50.dp)
-                                                        .clip(RoundedCornerShape(16.dp))
-                                                        .background(
-                                                            Brush.linearGradient(
-                                                                listOf(IndigoAccent, TurquoiseAccent)
-                                                            )
-                                                        ),
+                                                    modifier = Modifier.size(50.dp).clip(RoundedCornerShape(16.dp)).background(
+                                                        Brush.linearGradient(listOf(IndigoAccent, TurquoiseAccent))
+                                                    ),
                                                     contentAlignment = Alignment.Center
                                                 ) {
-                                                    Icon(
-                                                        imageVector = Icons.Filled.AccountBalanceWallet,
-                                                        contentDescription = null,
-                                                        tint = Color.White,
-                                                        modifier = Modifier.size(28.dp)
-                                                    )
+                                                    Icon(Icons.Filled.AccountBalanceWallet, contentDescription = null, tint = Color.White, modifier = Modifier.size(28.dp))
                                                 }
                                                 Column {
-                                                    Text(
-                                                        text = stringResource(R.string.app_title),
-                                                        style = MaterialTheme.typography.titleLarge,
-                                                        fontWeight = FontWeight.ExtraBold
-                                                    )
-                                                    Row(
-                                                        verticalAlignment = Alignment.CenterVertically,
-                                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                                    ) {
-                                                        Icon(
-                                                            imageVector = Icons.Filled.Shield,
-                                                            contentDescription = null,
-                                                            tint = EmeraldPaid,
-                                                            modifier = Modifier.size(14.dp)
-                                                        )
+                                                    Text(stringResource(R.string.app_title), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
+                                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                        Icon(Icons.Filled.Shield, contentDescription = null, tint = EmeraldPaid, modifier = Modifier.size(14.dp))
                                                         Text(
-                                                            text = if (currentUsername.isNotBlank()) {
-                                                                "ھېسابات: $currentUsername • ئىز قوغلاشتىن قوغدالغان"
-                                                            } else {
-                                                                stringResource(R.string.app_subtitle)
-                                                            },
+                                                            text = if (currentUsername.isNotBlank()) "ھېسابات: $currentUsername • قوغدالغان" else stringResource(R.string.app_subtitle),
                                                             style = MaterialTheme.typography.bodySmall,
                                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                                         )
@@ -390,90 +357,39 @@ fun DashboardScreen(
                                                 }
                                             }
 
-                                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                            Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                                                 IconButton(onClick = { showTermsGuide = !showTermsGuide }) {
-                                                    Icon(
-                                                        imageVector = Icons.Filled.Info,
-                                                        contentDescription = "ئاتالغۇلار سىنبەلگىسى",
-                                                        tint = TurquoiseAccent
-                                                    )
+                                                    Icon(Icons.Filled.Info, contentDescription = null, tint = TurquoiseAccent)
                                                 }
-                                                IconButton(
-                                                    onClick = onToggleTheme,
-                                                    modifier = Modifier.testTag("toggle_theme_button")
-                                                ) {
+                                                IconButton(onClick = onToggleTheme) {
                                                     Icon(
                                                         imageVector = if (isDarkGlass) Icons.Filled.LightMode else Icons.Filled.DarkMode,
                                                         contentDescription = stringResource(R.string.toggle_theme_cd),
                                                         tint = if (isDarkGlass) Color(0xFFFBBF24) else IndigoAccent
                                                     )
                                                 }
-                                                IconButton(
-                                                    onClick = { showDataMenu = !showDataMenu },
-                                                    modifier = Modifier.testTag("backup_menu_button")
-                                                ) {
-                                                    Icon(
-                                                        imageVector = Icons.Filled.Storage,
-                                                        contentDescription = stringResource(R.string.backup_menu_cd)
-                                                    )
+                                                IconButton(onClick = { showDataMenu = !showDataMenu }) {
+                                                    Icon(Icons.Filled.Storage, contentDescription = stringResource(R.string.backup_menu_cd))
                                                 }
                                                 IconButton(onClick = onLockApp) {
-                                                    Icon(
-                                                        imageVector = Icons.Filled.Lock,
-                                                        contentDescription = "ئىجازەت قۇلۇپى",
-                                                        tint = EmeraldPaid
-                                                    )
+                                                    Icon(Icons.Filled.Lock, contentDescription = null, tint = EmeraldPaid)
                                                 }
-                                                IconButton(
-                                                    onClick = onSignOut,
-                                                    modifier = Modifier.testTag("sign_out_button")
-                                                ) {
-                                                    Icon(
-                                                        imageVector = Icons.AutoMirrored.Filled.Logout,
-                                                        contentDescription = stringResource(R.string.sign_out),
-                                                        tint = RoseUnpaid
-                                                    )
+                                                IconButton(onClick = onSignOut) {
+                                                    Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = stringResource(R.string.sign_out), tint = RoseUnpaid)
                                                 }
                                             }
                                         }
 
-                                        // ئاتالغۇلارغا خاس سىنبەلگىلەر ۋە ئىستاتىستىكا بەلگىلىرى
                                         Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .horizontalScroll(rememberScrollState()),
+                                            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                                             horizontalArrangement = Arrangement.spacedBy(10.dp)
                                         ) {
-                                            StatBadgePill(
-                                                icon = Icons.Filled.Group,
-                                                text = "${stringResource(R.string.total_accounts_label)} $totalCount",
-                                                bgColor = IndigoAccent,
-                                                contentColor = Color.White
-                                            )
-                                            StatBadgePill(
-                                                icon = Icons.Filled.CheckCircle,
-                                                text = "${stringResource(R.string.fully_paid_accounts_label)}: $fullyPaidCount",
-                                                bgColor = EmeraldPaid.copy(alpha = 0.2f),
-                                                contentColor = EmeraldPaid,
-                                                borderColor = EmeraldPaid.copy(alpha = 0.45f)
-                                            )
-                                            StatBadgePill(
-                                                icon = Icons.Filled.DateRange,
-                                                text = "${stringResource(R.string.paid_months_summary_label)}: $totalPaidMonths",
-                                                bgColor = TurquoiseAccent.copy(alpha = 0.2f),
-                                                contentColor = TurquoiseAccent,
-                                                borderColor = TurquoiseAccent.copy(alpha = 0.45f)
-                                            )
-                                            StatBadgePill(
-                                                icon = Icons.Filled.Warning,
-                                                text = "تۆلەنمىگەن ئاي: $totalUnpaidMonths",
-                                                bgColor = RoseUnpaid.copy(alpha = 0.18f),
-                                                contentColor = RoseUnpaid,
-                                                borderColor = RoseUnpaid.copy(alpha = 0.45f)
-                                            )
+                                            StatBadgePill(Icons.Filled.Group, "${stringResource(R.string.total_accounts_label)} $totalCount", IndigoAccent, Color.White)
+                                            StatBadgePill(Icons.Filled.CheckCircle, "${stringResource(R.string.fully_paid_accounts_label)}: $fullyPaidCount", EmeraldPaid.copy(alpha = 0.2f), EmeraldPaid, EmeraldPaid.copy(alpha = 0.45f))
+                                            StatBadgePill(Icons.Filled.DateRange, "${stringResource(R.string.paid_months_summary_label)}: $totalPaidMonths", TurquoiseAccent.copy(alpha = 0.2f), TurquoiseAccent, TurquoiseAccent.copy(alpha = 0.45f))
+                                            StatBadgePill(Icons.Filled.Warning, "تۆلەنمىگەن: $totalUnpaidMonths", RoseUnpaid.copy(alpha = 0.18f), RoseUnpaid, RoseUnpaid.copy(alpha = 0.45f))
                                         }
 
-                                        // ئاتالغۇلارغا خاس سىنبەلگىلەر يېتەكچىسى
                                         AnimatedVisibility(visible = showTermsGuide) {
                                             Surface(
                                                 shape = RoundedCornerShape(18.dp),
@@ -481,19 +397,9 @@ fun DashboardScreen(
                                                 border = BorderStroke(1.dp, borderColor),
                                                 modifier = Modifier.fillMaxWidth()
                                             ) {
-                                                Column(
-                                                    modifier = Modifier.padding(12.dp),
-                                                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                                                ) {
-                                                    Text(
-                                                        text = "ئاتالغۇلارغا خاس سىنبەلگىلەر:",
-                                                        style = MaterialTheme.typography.labelLarge,
-                                                        fontWeight = FontWeight.Bold
-                                                    )
-                                                    FlowRow(
-                                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                                                    ) {
+                                                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                    Text("ئاتالغۇلارغا خاس سىنبەلگىلەر:", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                                                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                                         TermIconChip(Icons.Filled.Person, "ئىسىم", IndigoAccent)
                                                         TermIconChip(Icons.Filled.Badge, "ھېسابات نومۇرى", TurquoiseAccent)
                                                         TermIconChip(Icons.Filled.Key, "مەخپىي نومۇر", Color(0xFFF59E0B))
@@ -508,55 +414,30 @@ fun DashboardScreen(
                                             }
                                         }
 
-                                        // JSON زاپاسلاش ۋە ئەسلىگە كەلتۈرۈش تىزىملىكى
                                         AnimatedVisibility(visible = showDataMenu) {
-                                            Row(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .padding(top = 4.dp),
-                                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                                            ) {
+                                            Row(modifier = Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                                 Button(
                                                     onClick = {
                                                         val dateStamp = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
                                                         exportLauncher.launch("hesabat_backup_$dateStamp.json")
                                                     },
                                                     shape = RoundedCornerShape(14.dp),
-                                                    colors = ButtonDefaults.buttonColors(
-                                                        containerColor = IndigoAccent.copy(alpha = 0.2f),
-                                                        contentColor = MaterialTheme.colorScheme.onSurface
-                                                    ),
-                                                    modifier = Modifier
-                                                        .weight(1f)
-                                                        .testTag("export_json_button")
+                                                    colors = ButtonDefaults.buttonColors(containerColor = IndigoAccent.copy(alpha = 0.2f), contentColor = MaterialTheme.colorScheme.onSurface),
+                                                    modifier = Modifier.weight(1f)
                                                 ) {
                                                     Icon(Icons.Filled.Download, contentDescription = null, modifier = Modifier.size(18.dp))
                                                     Spacer(modifier = Modifier.width(6.dp))
-                                                    Text(
-                                                        text = stringResource(R.string.export_backup),
-                                                        style = MaterialTheme.typography.labelMedium
-                                                    )
+                                                    Text(stringResource(R.string.export_backup), style = MaterialTheme.typography.labelMedium)
                                                 }
-
                                                 Button(
-                                                    onClick = {
-                                                        importLauncher.launch(arrayOf("application/json", "text/plain", "*/*"))
-                                                    },
+                                                    onClick = { importLauncher.launch(arrayOf("application/json", "text/plain", "*/*")) },
                                                     shape = RoundedCornerShape(14.dp),
-                                                    colors = ButtonDefaults.buttonColors(
-                                                        containerColor = TurquoiseAccent.copy(alpha = 0.2f),
-                                                        contentColor = MaterialTheme.colorScheme.onSurface
-                                                    ),
-                                                    modifier = Modifier
-                                                        .weight(1f)
-                                                        .testTag("import_json_button")
+                                                    colors = ButtonDefaults.buttonColors(containerColor = TurquoiseAccent.copy(alpha = 0.2f), contentColor = MaterialTheme.colorScheme.onSurface),
+                                                    modifier = Modifier.weight(1f)
                                                 ) {
                                                     Icon(Icons.Filled.Upload, contentDescription = null, modifier = Modifier.size(18.dp))
                                                     Spacer(modifier = Modifier.width(6.dp))
-                                                    Text(
-                                                        text = stringResource(R.string.import_backup),
-                                                        style = MaterialTheme.typography.labelMedium
-                                                    )
+                                                    Text(stringResource(R.string.import_backup), style = MaterialTheme.typography.labelMedium)
                                                 }
                                             }
                                         }
@@ -565,21 +446,14 @@ fun DashboardScreen(
                             }
                         }
 
-                        // ئىزدەش ۋە يېڭى بەتتە ئېچىش تاختىسى
                         item {
                             Surface(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .widthIn(max = 960.dp)
-                                    .border(1.dp, borderColor, RoundedCornerShape(24.dp)),
+                                modifier = Modifier.fillMaxWidth().widthIn(max = 960.dp).border(1.dp, borderColor, RoundedCornerShape(24.dp)),
                                 shape = RoundedCornerShape(24.dp),
                                 color = MaterialTheme.colorScheme.surface,
                                 tonalElevation = 6.dp
                             ) {
-                                Column(
-                                    modifier = Modifier.padding(14.dp),
-                                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                                ) {
+                                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         verticalAlignment = Alignment.CenterVertically,
@@ -588,26 +462,12 @@ fun DashboardScreen(
                                         OutlinedTextField(
                                             value = searchQuery,
                                             onValueChange = { viewModel.updateSearchQuery(it) },
-                                            placeholder = {
-                                                Text(
-                                                    text = "ئىسىم، ئورۇن (كوچا/ئۆي) ياكى ھېساباتنى كىرگۈزۈڭ...",
-                                                    style = MaterialTheme.typography.bodyMedium
-                                                )
-                                            },
-                                            leadingIcon = {
-                                                Icon(
-                                                    imageVector = Icons.Filled.Search,
-                                                    contentDescription = null,
-                                                    tint = MaterialTheme.colorScheme.primary
-                                                )
-                                            },
+                                            placeholder = { Text("ئىسىم، ئورۇن (كوچا/ئۆي) ياكى ھېسابات...", style = MaterialTheme.typography.bodyMedium) },
+                                            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
                                             trailingIcon = {
                                                 if (searchQuery.isNotEmpty()) {
                                                     IconButton(onClick = { viewModel.updateSearchQuery("") }) {
-                                                        Icon(
-                                                            imageVector = Icons.Filled.Close,
-                                                            contentDescription = stringResource(R.string.clear_search_cd)
-                                                        )
+                                                        Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.clear_search_cd))
                                                     }
                                                 }
                                             },
@@ -620,13 +480,8 @@ fun DashboardScreen(
                                             ),
                                             singleLine = true,
                                             shape = RoundedCornerShape(16.dp),
-                                            colors = OutlinedTextFieldDefaults.colors(
-                                                focusedBorderColor = IndigoAccent,
-                                                unfocusedBorderColor = borderColor
-                                            ),
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .testTag("search_input")
+                                            colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = IndigoAccent, unfocusedBorderColor = borderColor),
+                                            modifier = Modifier.weight(1f)
                                         )
 
                                         Button(
@@ -638,29 +493,15 @@ fun DashboardScreen(
                                             colors = ButtonDefaults.buttonColors(containerColor = IndigoAccent),
                                             contentPadding = PaddingValues(horizontal = 14.dp, vertical = 14.dp)
                                         ) {
-                                            Icon(
-                                                imageVector = Icons.Filled.OpenInNew,
-                                                contentDescription = null,
-                                                tint = Color.White,
-                                                modifier = Modifier.size(18.dp)
-                                            )
+                                            Icon(Icons.Filled.OpenInNew, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
                                             Spacer(modifier = Modifier.width(6.dp))
-                                            Text(
-                                                text = "ئىزدەش بېتى",
-                                                color = Color.White,
-                                                fontWeight = FontWeight.Bold,
-                                                style = MaterialTheme.typography.labelLarge
-                                            )
+                                            Text("ئىزدەش بېتى", color = Color.White, fontWeight = FontWeight.Bold)
                                         }
                                     }
 
-                                    // ئىزدەش تۈرىنى تاللاپ بىۋاسىتە يېڭى بەتتە ئېچىش كۇنۇپكىلىرى
                                     Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .horizontalScroll(rememberScrollState()),
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                        verticalAlignment = Alignment.CenterVertically
+                                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
                                         SearchTargetField.entries.forEach { target ->
                                             FilterChip(
@@ -670,23 +511,14 @@ fun DashboardScreen(
                                                     searchPageQuery = searchQuery
                                                     isSearchPageOpen = true
                                                 },
-                                                leadingIcon = {
-                                                    Icon(
-                                                        imageVector = target.icon,
-                                                        contentDescription = null,
-                                                        modifier = Modifier.size(16.dp)
-                                                    )
-                                                },
+                                                leadingIcon = { Icon(target.icon, contentDescription = null, modifier = Modifier.size(16.dp)) },
                                                 label = { Text(target.title) }
                                             )
                                         }
                                     }
 
-                                    // سۈزگۈچ ۋە تىزىش بەلگىلىرى
                                     Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .horizontalScroll(rememberScrollState()),
+                                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
                                         FilterChip(
@@ -731,73 +563,42 @@ fun DashboardScreen(
                             }
                         }
 
-                        // ھېساباتلار تىزىملىكى
                         when (val state = filteredState) {
                             is AccountsUiState.Loading -> {
                                 item {
                                     Surface(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .widthIn(max = 960.dp)
-                                            .border(1.dp, borderColor, RoundedCornerShape(24.dp)),
+                                        modifier = Modifier.fillMaxWidth().widthIn(max = 960.dp),
                                         shape = RoundedCornerShape(24.dp),
                                         color = MaterialTheme.colorScheme.surface
                                     ) {
-                                        Column(
-                                            modifier = Modifier.padding(36.dp),
-                                            horizontalAlignment = Alignment.CenterHorizontally,
-                                            verticalArrangement = Arrangement.spacedBy(12.dp)
-                                        ) {
+                                        Column(modifier = Modifier.padding(36.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                                             CircularProgressIndicator()
-                                            Text(
-                                                text = stringResource(R.string.loading_accounts),
-                                                style = MaterialTheme.typography.bodyMedium
-                                            )
+                                            Spacer(modifier = Modifier.height(10.dp))
+                                            Text(stringResource(R.string.loading_accounts))
                                         }
                                     }
                                 }
                             }
-
                             is AccountsUiState.Error -> {
                                 item {
                                     Surface(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .widthIn(max = 960.dp)
-                                            .border(1.dp, RoseUnpaid.copy(alpha = 0.5f), RoundedCornerShape(24.dp)),
+                                        modifier = Modifier.fillMaxWidth().widthIn(max = 960.dp),
                                         shape = RoundedCornerShape(24.dp),
                                         color = MaterialTheme.colorScheme.surface
                                     ) {
-                                        Column(
-                                            modifier = Modifier.padding(24.dp),
-                                            horizontalAlignment = Alignment.CenterHorizontally,
-                                            verticalArrangement = Arrangement.spacedBy(10.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Filled.Warning,
-                                                contentDescription = null,
-                                                tint = RoseUnpaid,
-                                                modifier = Modifier.size(36.dp)
-                                            )
-                                            Text(
-                                                text = state.message,
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                textAlign = TextAlign.Center
-                                            )
+                                        Column(modifier = Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Icon(Icons.Filled.Warning, contentDescription = null, tint = RoseUnpaid, modifier = Modifier.size(36.dp))
+                                            Text(state.message, textAlign = TextAlign.Center)
                                         }
                                     }
                                 }
                             }
-
                             is AccountsUiState.Success -> {
                                 val accounts = state.accounts
                                 if (accounts.isEmpty()) {
                                     item {
                                         Surface(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .widthIn(max = 960.dp)
-                                                .border(1.dp, borderColor, RoundedCornerShape(24.dp)),
+                                            modifier = Modifier.fillMaxWidth().widthIn(max = 960.dp).border(1.dp, borderColor, RoundedCornerShape(24.dp)),
                                             shape = RoundedCornerShape(24.dp),
                                             color = MaterialTheme.colorScheme.surface
                                         ) {
@@ -806,18 +607,9 @@ fun DashboardScreen(
                                                 horizontalAlignment = Alignment.CenterHorizontally,
                                                 verticalArrangement = Arrangement.spacedBy(10.dp)
                                             ) {
-                                                Icon(
-                                                    imageVector = Icons.Filled.FolderOpen,
-                                                    contentDescription = null,
-                                                    tint = IndigoAccent.copy(alpha = 0.7f),
-                                                    modifier = Modifier.size(52.dp)
-                                                )
+                                                Icon(Icons.Filled.FolderOpen, contentDescription = null, tint = IndigoAccent, modifier = Modifier.size(52.dp))
                                                 Text(
-                                                    text = if (searchQuery.isNotBlank()) {
-                                                        stringResource(R.string.empty_search_message)
-                                                    } else {
-                                                        stringResource(R.string.empty_accounts_title)
-                                                    },
+                                                    text = if (searchQuery.isNotBlank()) stringResource(R.string.empty_search_message) else stringResource(R.string.empty_accounts_title),
                                                     style = MaterialTheme.typography.titleMedium,
                                                     fontWeight = FontWeight.Bold,
                                                     textAlign = TextAlign.Center
@@ -834,42 +626,262 @@ fun DashboardScreen(
                                         }
                                     }
                                 } else {
-                                    item {
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .widthIn(max = 960.dp)
-                                                .padding(horizontal = 4.dp),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Text(
-                                                text = if (searchQuery.isNotBlank()) {
-                                                    stringResource(R.string.search_results_count, accounts.size)
-                                                } else {
-                                                    stringResource(R.string.saved_accounts_section)
-                                                },
-                                                style = MaterialTheme.typography.titleMedium,
-                                                fontWeight = FontWeight.Bold,
-                                                color = Color.White
-                                            )
-                                        }
+                                    items(accounts, key = { it.id }) { account ->
+                                        AccountCard(
+                                            account = account,
+                                            isDarkGlass = isDarkGlass,
+                                            isCompactWidth = isCompact,
+                                            onEditClick = {
+                                                editingAccount = account
+                                                showFormSheet = true
+                                            },
+                                            onDeleteClick = { pendingDeleteAccount = account },
+                                            onToggleMonth = { mIdx ->
+                                                viewModel.toggleMonth(account, mIdx) { err ->
+                                                    scope.launch { snackbarHostState.showSnackbar(err) }
+                                                }
+                                            },
+                                            onCopyText = copyHandler,
+                                            modifier = Modifier.widthIn(max = 680.dp)
+                                        )
                                     }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 
-                                    if (isWide) {
-                                        val paired = accounts.chunked(2)
-                                        items(paired, key = { pair -> pair.joinToString("_") { it.id } }) { pair ->
-                                            Row(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .widthIn(max = 960.dp),
-                                                horizontalArrangement = Arrangement.spacedBy(12.dp)
-                                            ) {
-                                                pair.forEach { account ->
-                                                    AccountCard(
-                                                        account = account,
-                                                        isDarkGlass = isDarkGlass,
-                                                        isCompactWidth = true,
-                                                        onEditClick = {
-                                                            editingAccount = account
-                                                            showFormSheet = true
+    if (showFormSheet) {
+        AccountFormSheet(
+            editingAccount = editingAccount,
+            isSaving = isSaving,
+            onDismiss = {
+                if (!isSaving) {
+                    showFormSheet = false
+                    editingAccount = null
+                }
+            },
+            onSubmit = { editingId, name, accountName, password, flowAmount, openDate, streetName, houseNumber, notes, months ->
+                viewModel.saveAccount(
+                    editingId = editingId,
+                    name = name,
+                    accountName = accountName,
+                    password = password,
+                    flowAmount = flowAmount,
+                    openDate = openDate,
+                    streetName = streetName,
+                    houseNumber = houseNumber,
+                    notes = notes,
+                    months = months,
+                    onSuccess = { wasEdit ->
+                        showFormSheet = false
+                        editingAccount = null
+                        scope.launch { snackbarHostState.showSnackbar(if (wasEdit) updatedMsg else savedMsg) }
+                    },
+                    onError = { err -> scope.launch { snackbarHostState.showSnackbar(err) } }
+                )
+            }
+        )
+    }
+
+    pendingDeleteAccount?.let { accountToDelete ->
+        AlertDialog(
+            onDismissRequest = { pendingDeleteAccount = null },
+            icon = { Icon(Icons.Filled.Warning, contentDescription = null, tint = RoseUnpaid) },
+            title = { Text(stringResource(R.string.delete_dialog_title), fontWeight = FontWeight.Bold) },
+            text = { Text(stringResource(R.string.delete_dialog_message, accountToDelete.name)) },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val idToDelete = accountToDelete.id
+                        pendingDeleteAccount = null
+                        viewModel.deleteAccount(
+                            accountId = idToDelete,
+                            onSuccess = { scope.launch { snackbarHostState.showSnackbar(deletedMsg) } },
+                            onError = { err -> scope.launch { snackbarHostState.showSnackbar(err) } }
+                        )
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = RoseUnpaid)
+                ) {
+                    Text(stringResource(R.string.delete_action), color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDeleteAccount = null }) {
+                    Text(stringResource(R.string.cancel_action))
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun SearchResultsDedicatedPage(
+    allAccounts: List<AccountRecord>,
+    initialQuery: String,
+    selectedTarget: SearchTargetField,
+    isDarkGlass: Boolean,
+    borderColor: Color,
+    onQueryChange: (String) -> Unit,
+    onTargetChange: (SearchTargetField) -> Unit,
+    onBack: () -> Unit,
+    onEditClick: (AccountRecord) -> Unit,
+    onDeleteClick: (AccountRecord) -> Unit,
+    onToggleMonth: (AccountRecord, Int) -> Unit,
+    onCopyText: (String, String) -> Unit
+) {
+    val q = initialQuery.trim().lowercase()
+    val matchedAccounts = remember(allAccounts, q, selectedTarget) {
+        if (q.isEmpty()) {
+            allAccounts
+        } else {
+            allAccounts.filter { r ->
+                when (selectedTarget) {
+                    SearchTargetField.ALL ->
+                        r.name.lowercase().contains(q) ||
+                            r.accountName.lowercase().contains(q) ||
+                            r.streetName.lowercase().contains(q) ||
+                            r.houseNumber.lowercase().contains(q) ||
+                            r.flowAmount.lowercase().contains(q) ||
+                            r.notes.lowercase().contains(q)
+                    SearchTargetField.NAME -> r.name.lowercase().contains(q)
+                    SearchTargetField.LOCATION -> r.streetName.lowercase().contains(q) || r.houseNumber.lowercase().contains(q)
+                    SearchTargetField.ACCOUNT -> r.accountName.lowercase().contains(q)
+                }
+            }
+        }
+    }
+
+    val availableStreets = remember(allAccounts) {
+        allAccounts.map { it.streetName.trim() }.filter { it.isNotEmpty() }.distinct().sorted()
+    }
+
+    Scaffold(
+        containerColor = Color.Transparent,
+        contentWindowInsets = WindowInsets.safeDrawing
+    ) { innerPadding ->
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().padding(innerPadding).padding(horizontal = 16.dp),
+            contentPadding = PaddingValues(top = 12.dp, bottom = 80.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            item {
+                Surface(
+                    modifier = Modifier.fillMaxWidth().widthIn(max = 960.dp).border(1.5.dp, borderColor, RoundedCornerShape(28.dp)),
+                    shape = RoundedCornerShape(28.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    tonalElevation = 10.dp
+                ) {
+                    Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Surface(
+                                shape = RoundedCornerShape(14.dp),
+                                color = IndigoAccent.copy(alpha = 0.2f),
+                                modifier = Modifier.clickable { onBack() }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, tint = IndigoAccent)
+                                    Text("باش بەت", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                            Column {
+                                Text("مەخسۇس ئىزدەش بېتى", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold)
+                                Text("ئىسىم، ئورۇن ياكى ھېسابات بويىچە ئايرىم بەتتە تەكشۈرۈش", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+
+                        OutlinedTextField(
+                            value = initialQuery,
+                            onValueChange = onQueryChange,
+                            placeholder = { Text("ئىسىم، كوچا/ئۆي نومۇرى ياكى ھېسابات نومۇرىنى يېزىڭ...") },
+                            leadingIcon = { Icon(selectedTarget.icon, contentDescription = null, tint = TurquoiseAccent) },
+                            trailingIcon = {
+                                if (initialQuery.isNotEmpty()) {
+                                    IconButton(onClick = { onQueryChange("") }) {
+                                        Icon(Icons.Filled.Close, contentDescription = null)
+                                    }
+                                }
+                            },
+                            singleLine = true,
+                            shape = RoundedCornerShape(16.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            SearchTargetField.entries.forEach { target ->
+                                FilterChip(
+                                    selected = selectedTarget == target,
+                                    onClick = { onTargetChange(target) },
+                                    leadingIcon = { Icon(target.icon, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                                    label = { Text(target.title) }
+                                )
+                            }
+                        }
+
+                        if (availableStreets.isNotEmpty()) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("ئورۇنلار:", style = MaterialTheme.typography.labelSmall)
+                                availableStreets.forEach { street ->
+                                    FilterChip(
+                                        selected = initialQuery.equals(street, ignoreCase = true),
+                                        onClick = {
+                                            onTargetChange(SearchTargetField.LOCATION)
+                                            onQueryChange(street)
+                                        },
+                                        leadingIcon = { Icon(Icons.Filled.LocationOn, contentDescription = null, modifier = Modifier.size(15.dp)) },
+                                        label = { Text(street) }
+                                    )
+                                }
+                            }
+                        }
+
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            StatBadgePill(Icons.Filled.Search, "تېپىلغىنى: ${matchedAccounts.size} دانە", IndigoAccent, Color.White)
+                            StatBadgePill(Icons.Filled.CheckCircle, "تولۇق تۆلىگەن: ${matchedAccounts.count { it.paidMonthsCount() == 12 }}", EmeraldPaid.copy(alpha = 0.2f), EmeraldPaid)
+                        }
+                    }
+                }
+            }
+
+            if (matchedAccounts.isEmpty()) {
+                item {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth().widthIn(max = 960.dp).border(1.dp, borderColor, RoundedCornerShape(24.dp)),
+                        shape = RoundedCornerShape(24.dp),
+                        color = MaterialTheme.colorScheme.surface
+                    ) {
+                        Column(modifier = Modifier.padding(36.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Icon(Icons.Filled.FolderOpen, contentDescription = null, tint = TurquoiseAccent, modifier = Modifier.size(48.dp))
+                            Text("ماس كېلىدىغان ھېسابات تېپىلمىدى", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            } else {
+                items(matchedAccounts, key = { it.id }) { account ->
+                    AccountCard(
+                        account = account,
+                        isDarkGlass = isDarkGlass,
+                        isCompactWidth = false,
+                        onEditClick = { onEditClick(account) },
+                        onDeleteClick = { onDeleteClick(account) },
+                        onToggleMonth = { mIdx -> onToggleMonth(account, mIdx) },
+                        onCopyText = onCopyText,
+                        modifier = Modifier.widthIn(max = 680.dp)
+                    )
+                }
+            }
+        }
+    }
+}
