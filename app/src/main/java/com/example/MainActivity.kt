@@ -84,7 +84,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.data.preferences.ThemePreferences
 import com.example.data.repository.AccountRepository
-import com.example.ui.auth.signInWithGoogle
+import com.example.ui.auth.attemptAutoSignIn
 import com.example.ui.screens.DashboardScreen
 import com.example.ui.theme.EmeraldPaid
 import com.example.ui.theme.HesabatTheme
@@ -94,7 +94,6 @@ import com.example.ui.theme.TurquoiseAccent
 import com.example.ui.viewmodel.AccountViewModel
 import com.google.firebase.Firebase
 import com.google.firebase.auth.auth
-import com.google.firebase.firestore.FirebaseFirestore
 import java.security.MessageDigest
 import kotlinx.coroutines.launch
 import org.json.JSONArray
@@ -104,7 +103,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // ئېكراننى باشقا ئۈسكۈنە ياكى ئىز قوغلاش پىروگراممىلىرىنىڭ تارتىۋېلىشىدىن قوغداش
+        // باشقا ئۈسكۈنە ۋە ئىز قوغلاش پىروگراممىلىرىنىڭ ئېكراننى تارتىۋېلىشىدىن قوغداش
         window.setFlags(
             WindowManager.LayoutParams.FLAG_SECURE,
             WindowManager.LayoutParams.FLAG_SECURE
@@ -146,7 +145,7 @@ data class LocalUserAccount(
 )
 
 class LocalAuthManager(context: Context) {
-    private val prefs = context.getSharedPreferences("hesabat_account_auth_v3", Context.MODE_PRIVATE)
+    private val prefs = context.getSharedPreferences("hesabat_secure_auth_prefs", Context.MODE_PRIVATE)
 
     fun getRegisteredUsers(): List<LocalUserAccount> {
         val raw = prefs.getString(KEY_USERS, "[]") ?: "[]"
@@ -174,13 +173,15 @@ class LocalAuthManager(context: Context) {
         return getRegisteredUsers().firstOrNull { it.userId == activeId }
     }
 
-    fun registerOrLoginGoogleUser(displayName: String, uid: String): LocalUserAccount {
+    fun registerOrLoginGoogleUser(googleEmailOrName: String): LocalUserAccount {
+        val clean = googleEmailOrName.trim().ifBlank { "Google ھېساباتى" }
+        val userId = "user_" + sha256(clean.lowercase()).take(16)
         val users = getRegisteredUsers().toMutableList()
-        val existing = users.firstOrNull { it.userId == uid }
+        val existing = users.firstOrNull { it.userId == userId || it.username.equals(clean, ignoreCase = true) }
         val account = existing ?: LocalUserAccount(
-            userId = uid,
-            username = displayName.ifBlank { "Google ھېساباتى" },
-            passwordHash = sha256("google_auth_$uid")
+            userId = userId,
+            username = clean,
+            passwordHash = sha256("google_$userId")
         ).also {
             users.add(it)
             saveUsers(users)
@@ -201,7 +202,7 @@ class LocalAuthManager(context: Context) {
                 prefs.edit().putString(KEY_ACTIVE_USER_ID, existing.userId).commit()
                 return Result.success(existing)
             }
-            return Result.failure(IllegalArgumentException("بۇ ھېسابات بۇرۇن ئېچىلغان، «ھېساباتقا كىرىش» تىن مەخپىي نومۇر بىلەن كىرىڭ"))
+            return Result.failure(IllegalArgumentException("بۇ ھېسابات بۇرۇن ئېچىلغان، «ھېساباتقا كىرىش» نى بېسىپ شۇ مەخپىي نومۇر بىلەن كىرىڭ"))
         }
         val userId = "user_" + sha256(cleanName.lowercase()).take(16)
         val account = LocalUserAccount(
@@ -219,7 +220,7 @@ class LocalAuthManager(context: Context) {
         val cleanName = username.trim()
         val users = getRegisteredUsers()
         val matched = users.firstOrNull { it.username.equals(cleanName, ignoreCase = true) }
-            ?: return Result.failure(IllegalArgumentException("بۇ ھېسابات تېپىلمىدى، «يېڭى ھېسابات ئېچىش» نى بېسىپ تىزىملىتىڭ"))
+            ?: return Result.failure(IllegalArgumentException("بۇ ھېسابات تېپىلمىدى، ئالدى بىلەن يېڭى ھېسابات ئېچىڭ"))
         if (matched.passwordHash != sha256(password)) {
             return Result.failure(IllegalArgumentException("مەخپىي نومۇر خاتا!"))
         }
@@ -256,8 +257,8 @@ class LocalAuthManager(context: Context) {
     }
 
     private companion object {
-        const val KEY_USERS = "registered_users_permanent"
-        const val KEY_ACTIVE_USER_ID = "active_user_id_permanent"
+        const val KEY_USERS = "registered_accounts_v2"
+        const val KEY_ACTIVE_USER_ID = "active_user_id_v2"
     }
 }
 
@@ -273,30 +274,13 @@ fun AppNavigation(
     val scope = rememberCoroutineScope()
     val credentialManager = remember { CredentialManager.create(context) }
     val authManager = remember { LocalAuthManager(context.applicationContext) }
-
-    val firestoreInstance = remember {
-        runCatching { FirebaseFirestore.getInstance() }.getOrNull()
-    }
-    val repository = remember {
-        AccountRepository(context.applicationContext, firestoreInstance)
-    }
+    val repository = remember { AccountRepository(context.applicationContext) }
 
     var registeredUsers by remember { mutableStateOf(authManager.getRegisteredUsers()) }
-    var currentUser by remember {
-        mutableStateOf(
-            authManager.getActiveUser() ?: runCatching {
-                Firebase.auth.currentUser?.let { fbUser ->
-                    authManager.registerOrLoginGoogleUser(
-                        fbUser.displayName ?: fbUser.email ?: "Google ھېساباتى",
-                        fbUser.uid
-                    )
-                }
-            }.getOrNull()
-        )
-    }
-
+    var currentUser by remember { mutableStateOf(authManager.getActiveUser()) }
     var needExternalPermission by remember { mutableStateOf(isExternalAccess) }
     var manualLockActive by remember { mutableStateOf(false) }
+    var showGoogleDialog by remember { mutableStateOf(false) }
 
     if (needExternalPermission) {
         ExternalProgramPermissionDialog(
@@ -306,11 +290,23 @@ fun AppNavigation(
         )
     }
 
+    if (showGoogleDialog) {
+        GoogleAccountQuickDialog(
+            onDismiss = { showGoogleDialog = false },
+            onConfirmGoogleAccount = { emailOrName ->
+                val user = authManager.registerOrLoginGoogleUser(emailOrName)
+                registeredUsers = authManager.getRegisteredUsers()
+                currentUser = user
+                showGoogleDialog = false
+            }
+        )
+    }
+
     val activeAccount = currentUser
     if (activeAccount == null) {
         AccountPortalScreen(
             registeredUsers = registeredUsers,
-            onLogin = { username, password ->
+            onLogin = { username: String, password: String ->
                 val res = authManager.loginUser(username, password)
                 res.onSuccess { user ->
                     registeredUsers = authManager.getRegisteredUsers()
@@ -318,7 +314,7 @@ fun AppNavigation(
                 }
                 res.map { Unit }
             },
-            onRegister = { username, password ->
+            onRegister = { username: String, password: String ->
                 val res = authManager.registerUser(username, password)
                 res.onSuccess { user ->
                     registeredUsers = authManager.getRegisteredUsers()
@@ -326,23 +322,21 @@ fun AppNavigation(
                 }
                 res.map { Unit }
             },
-            onGoogleSignIn = { onError ->
-                signInWithGoogle(
+            onGoogleSignInClick = {
+                attemptAutoSignIn(
                     context = context,
                     credentialManager = credentialManager,
-                    scope = scope,
-                    onSuccess = {
+                    onAuthSuccess = {
                         val fbUser = runCatching { Firebase.auth.currentUser }.getOrNull()
-                        val user = authManager.registerOrLoginGoogleUser(
-                            displayName = fbUser?.displayName ?: fbUser?.email ?: "Google ھېساباتى",
-                            uid = fbUser?.uid ?: "google_local_user"
-                        )
+                        val googleName = fbUser?.email ?: fbUser?.displayName ?: "Google ھېساباتى"
+                        val user = authManager.registerOrLoginGoogleUser(googleName)
                         registeredUsers = authManager.getRegisteredUsers()
                         currentUser = user
                     },
-                    onError = { errMsg ->
-                        onError(errMsg)
-                    }
+                    onUnauthenticated = {
+                        showGoogleDialog = true
+                    },
+                    scope = scope
                 )
             }
         )
@@ -350,7 +344,7 @@ fun AppNavigation(
         if (manualLockActive) {
             PasswordPermissionDialog(
                 username = activeAccount.username,
-                onVerify = { pwd ->
+                onVerify = { pwd: String ->
                     if (authManager.verifyPassword(activeAccount, pwd)) {
                         manualLockActive = false
                         true
@@ -389,6 +383,60 @@ fun AppNavigation(
             )
         }
     }
+}
+
+@Composable
+private fun GoogleAccountQuickDialog(
+    onDismiss: () -> Unit,
+    onConfirmGoogleAccount: (String) -> Unit
+) {
+    var googleAccountInput by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            Icon(
+                imageVector = Icons.Filled.AccountCircle,
+                contentDescription = null,
+                tint = TurquoiseAccent,
+                modifier = Modifier.size(40.dp)
+            )
+        },
+        title = {
+            Text("Google ھېساباتى بىلەن كىرىش", fontWeight = FontWeight.Bold)
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = "Google ئېلخەت ئادرېسىڭىزنى (Gmail) ياكى ھېسابات نامىڭىزنى كىرگۈزۈڭ. بۇ ھېساباتنىڭ بارلىق مەلۇماتلىرى مەڭگۈلۈك ساقلىنىدۇ:",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                OutlinedTextField(
+                    value = googleAccountInput,
+                    onValueChange = { googleAccountInput = it },
+                    label = { Text("Gmail ياكى Google ھېسابات نامى") },
+                    placeholder = { Text("example@gmail.com") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(14.dp)
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val finalName = googleAccountInput.trim().ifEmpty { "Google ھېساباتى" }
+                    onConfirmGoogleAccount(finalName)
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = IndigoAccent)
+            ) {
+                Text("كىرىش", color = Color.White, fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("بىكار قىلىش")
+            }
+        }
+    )
 }
 
 @Composable
@@ -509,7 +557,7 @@ private fun AccountPortalScreen(
     registeredUsers: List<LocalUserAccount>,
     onLogin: (String, String) -> Result<Unit>,
     onRegister: (String, String) -> Result<Unit>,
-    onGoogleSignIn: ((String) -> Unit) -> Unit
+    onGoogleSignInClick: () -> Unit
 ) {
     var isRegisterMode by remember { mutableStateOf(registeredUsers.isEmpty()) }
     var username by remember { mutableStateOf(registeredUsers.firstOrNull()?.username.orEmpty()) }
@@ -627,7 +675,7 @@ private fun AccountPortalScreen(
                             verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             Text(
-                                text = "بۇرۇن ئېچىلغان ھېساباتلار:",
+                                text = "ساقلانغان ھېساباتلار (چېكىپ تاللاڭ):",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -749,11 +797,7 @@ private fun AccountPortalScreen(
                     HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
 
                     OutlinedButton(
-                        onClick = {
-                            onGoogleSignIn { errMsg ->
-                                errorMessage = errMsg
-                            }
-                        },
+                        onClick = onGoogleSignInClick,
                         shape = RoundedCornerShape(16.dp),
                         border = BorderStroke(1.2.dp, TurquoiseAccent.copy(alpha = 0.6f)),
                         modifier = Modifier
